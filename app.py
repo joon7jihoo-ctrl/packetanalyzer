@@ -1,6 +1,5 @@
 # =============================================================================
-# pcap 네트워크 패킷 분석 및 멀티 LLM 질의응답 대시보드
-# KDN Vibe Coding 과정 - Python Streamlit AI 앱 개발
+# KDN 패킷 분석기 — 클린 SaaS 대시보드 리뉴얼
 # =============================================================================
 # 실행 방법:
 #   pip install streamlit scapy pandas plotly openai anthropic
@@ -8,7 +7,6 @@
 # =============================================================================
 
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -20,541 +18,539 @@ from collections import Counter
 
 # ─── 페이지 기본 설정 ──────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="KDN 패킷 분석 대시보드",
-    page_icon="🔍",
+    page_title="KDN 패킷 분석기",
+    page_icon=None,
     layout="wide",
-    initial_sidebar_state="auto",
+    initial_sidebar_state="collapsed",
 )
 
-# ─── 커스텀 CSS (Pulse 대시보드 스타일) ──────────────────────────────────────
+# ─── 커스텀 CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-/* ════════════════════════════════════════════════════
-   Pulse 디자인 토큰
-   ════════════════════════════════════════════════════ */
-:root {
-    --bg:        #0b0e17;
-    --side:      #11141d;
-    --card:      #161a25;
-    --card-h:    #1c2130;
-    --border:    #232838;
-    --text:      #e7e9ee;
-    --text-dim:  #a4abbb;
-    --text-mute: #6b7387;
-    --accent:    #6366f1;
-    --accent-2:  #22d3ee;
-    --accent-s:  rgba(99,102,241,0.15);
-    --success:   #22c55e;
-    --warn:      #f59e0b;
-    --danger:    #ef4444;
-    --fs-xs:    clamp(0.70rem, 1.4vw, 0.75rem);
-    --fs-sm:    clamp(0.80rem, 1.7vw, 0.85rem);
-    --fs-base:  clamp(0.88rem, 1.9vw, 0.92rem);
-    --fs-md:    clamp(0.95rem, 2.1vw, 1.0rem);
-    --fs-lg:    clamp(1.15rem, 2.8vw, 1.4rem);
-    --fs-xl:    clamp(1.3rem,  3.5vw, 1.6rem);
-    --sp-xs: 6px;  --sp-sm: 12px; --sp-md: 18px; --sp-lg: 26px;
-    --r-sm: 8px;   --r-md: 12px;  --r-lg: 16px;
-    --touch: 44px;
-    --ease: 0.15s ease;
+/* ── 기본 폰트 & 배경 ─────────────────────────────────────────── */
+html, body {
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
+    font-size: 15px !important;
+    line-height: 1.7 !important;
+}
+.stApp {
+    background: #f9fafb !important;
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
+}
+* {
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
 }
 
-/* ════════════════════════════════════════════════════
-   기본 리셋
-   ════════════════════════════════════════════════════ */
-*, *::before, *::after { box-sizing: border-box; }
-html, body, .stApp {
-    background-color: var(--bg) !important;
-    color: var(--text) !important;
-    font-family: 'Inter', 'Pretendard', -apple-system, system-ui, sans-serif !important;
-    font-size: var(--fs-base);
-    line-height: 1.55;
-    -webkit-font-smoothing: antialiased;
+/* ── Streamlit 불필요 요소 제거 ────────────────────────────────── */
+footer,
+#MainMenu,
+[data-testid="stToolbar"],
+header[data-testid="stHeader"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"] {
+    display: none !important;
 }
-.main .block-container,
-div.block-container,
 [data-testid="stAppViewBlockContainer"] {
-    padding: var(--sp-md) var(--sp-lg) var(--sp-lg) !important;
-    max-width: 1480px !important;
+    padding-top: 0 !important;
+}
+div.block-container {
+    padding-top: 1rem !important;
+    max-width: 1200px !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+}
+.appview-container > section.main {
+    padding-top: 0 !important;
+}
+/* Hide collapsed sidebar toggle */
+[data-testid="collapsedControl"],
+[data-testid="stSidebarNav"],
+button[data-testid="baseButton-headerNoPadding"] {
+    display: none !important;
 }
 
-/* ════════════════════════════════════════════════════
-   사이드바
-   ════════════════════════════════════════════════════ */
-[data-testid="stSidebar"] {
-    background-color: var(--side) !important;
-    border-right: 1px solid var(--border) !important;
+/* ── 앱 헤더 영역 ───────────────────────────────────────────────── */
+.app-header {
+    background: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 16px 0 0;
+    margin-bottom: 0;
 }
-[data-testid="stSidebar"] section { padding-top: var(--sp-sm) !important; }
-[data-testid="stSidebar"] * { color: var(--text) !important; }
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span { color: var(--text-dim) !important; }
-[data-testid="stSidebar"] hr { border-color: var(--border) !important; margin: var(--sp-sm) 0 !important; }
-[data-testid="stSidebar"] h2 {
-    color: var(--text) !important;
-    font-size: var(--fs-md) !important;
+.app-header h1 {
+    font-size: 1.25rem !important;
     font-weight: 700 !important;
-    letter-spacing: -0.01em;
-}
-
-/* 사이드바 브랜드 */
-.pulse-brand {
-    display: flex; align-items: center; gap: 10px;
-    font-weight: 800; font-size: 1.05rem;
-    padding: 4px 0 18px; letter-spacing: -.01em;
-    color: var(--text) !important;
-}
-.pulse-mark {
-    width: 24px; height: 24px; border-radius: 7px; flex-shrink: 0;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-}
-
-/* ── 사이드바 네비게이션 ── */
-.pulse-nav {
-    display: flex; flex-direction: column; gap: 2px;
-    margin-bottom: 16px;
-}
-.pulse-nav-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 9px 12px; border-radius: 8px;
-    color: var(--text-dim); font-size: .88rem;
-    font-family: inherit; font-weight: 400;
-    cursor: pointer; transition: background .15s, color .15s;
-    letter-spacing: 0; user-select: none;
-}
-.pulse-nav-item:hover {
-    background: rgba(255,255,255,.04);
-    color: var(--text);
-}
-.pulse-nav-item.active {
-    background: rgba(99,102,241,.15);
-    color: var(--accent);
-    font-weight: 600;
-}
-.pulse-nav-item .nav-icon {
-    font-size: 1rem; width: 20px; text-align: center; flex-shrink: 0;
-}
-.pulse-nav-divider {
-    height: 1px; background: var(--border);
-    margin: 8px 4px; border: none;
-}
-
-/* 파일 업로더 */
-[data-testid="stFileUploaderDropzone"] {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1.5px dashed var(--border) !important;
-    border-radius: var(--r-md) !important;
-    transition: border-color var(--ease), background var(--ease);
-}
-[data-testid="stFileUploaderDropzone"]:hover {
-    background: rgba(99,102,241,0.06) !important;
-    border-color: var(--accent) !important;
-}
-[data-testid="stFileUploaderDropzone"] * { color: var(--text-mute) !important; }
-[data-testid="stFileUploaderDropzoneButton"],
-[data-testid="stFileUploaderDropzone"] button,
-[data-testid="stFileUploader"] button,
-section[data-testid="stFileUploader"] button {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text-dim) !important;
-    border-radius: var(--r-sm) !important;
-    min-height: var(--touch) !important;
-    font-size: var(--fs-sm) !important;
-    transition: all var(--ease) !important;
-}
-[data-testid="stFileUploaderDropzone"] button:hover,
-[data-testid="stFileUploader"] button:hover {
-    border-color: var(--accent) !important;
-    background: var(--accent-s) !important;
-    color: var(--accent) !important;
-}
-[data-testid="stFileUploaderFile"] {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--r-sm) !important;
-}
-[data-testid="stFileUploaderFile"] * { color: var(--text) !important; }
-
-/* ════════════════════════════════════════════════════
-   버튼
-   ════════════════════════════════════════════════════ */
-.stButton button {
-    min-height: var(--touch) !important;
-    background: var(--card) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text-dim) !important;
-    border-radius: var(--r-sm) !important;
-    font-size: var(--fs-sm) !important;
-    font-weight: 500 !important;
-    padding: 7px 14px !important;
-    transition: all var(--ease) !important;
-    font-family: inherit !important;
-    cursor: pointer;
-}
-.stButton button:hover {
-    background: var(--card-h) !important;
-    color: var(--text) !important;
-    border-color: var(--accent) !important;
-}
-.stButton button[kind="primary"] {
-    background: var(--accent) !important;
-    border-color: var(--accent) !important;
-    color: #fff !important;
-    font-weight: 600 !important;
-}
-.stButton button[kind="primary"]:hover {
-    background: #5254d4 !important;
-    border-color: #5254d4 !important;
-}
-
-/* ════════════════════════════════════════════════════
-   Pulse 헤더 (Topbar)
-   ════════════════════════════════════════════════════ */
-.pulse-topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: var(--sp-md);
-}
-.pulse-topbar-left h1 {
-    margin: 0 0 3px;
-    font-size: var(--fs-xl) !important;
-    font-weight: 700 !important;
+    color: #111827 !important;
+    margin: 0 0 0 !important;
     letter-spacing: -0.02em;
-    color: var(--text) !important;
-}
-.pulse-topbar-left p {
-    margin: 0;
-    color: var(--text-mute);
-    font-size: var(--fs-sm);
-}
-.pulse-topbar-right {
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-}
-.pulse-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 5px 11px; border-radius: 999px;
-    font-size: var(--fs-xs); font-weight: 600;
-    letter-spacing: 0.2px; white-space: nowrap;
-    border: 1px solid transparent;
-}
-.pulse-badge--ok   { background: rgba(34,197,94,.12); color: #4ade80; border-color: rgba(34,197,94,.25); }
-.pulse-badge--warn { background: rgba(245,158,11,.12); color: #fbbf24; border-color: rgba(245,158,11,.25); }
-.pulse-badge--info { background: var(--accent-s); color: #a5b4fc; border-color: rgba(99,102,241,.3); }
-
-/* ════════════════════════════════════════════════════
-   KPI 카드
-   ════════════════════════════════════════════════════ */
-[data-testid="stMetric"] {
-    background: var(--card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--r-md) !important;
-    padding: var(--sp-md) !important;
-    transition: border-color var(--ease), background var(--ease);
-}
-[data-testid="stMetric"]:hover {
-    border-color: var(--accent) !important;
-    background: var(--card-h) !important;
-}
-[data-testid="stMetricValue"] {
-    color: var(--text) !important;
-    font-weight: 700 !important;
-    font-size: var(--fs-lg) !important;
-    letter-spacing: -0.01em;
-}
-[data-testid="stMetricLabel"] {
-    color: var(--text-mute) !important;
-    font-size: var(--fs-xs) !important;
-    font-weight: 400 !important;
-    letter-spacing: 0.01em;
 }
 
-/* ════════════════════════════════════════════════════
-   탭
-   ════════════════════════════════════════════════════ */
+/* ── 탭 (상단 네비게이션) ───────────────────────────────────────── */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
-    background: transparent !important;
-    border-bottom: 1px solid var(--border) !important;
-    gap: 0 !important; padding: 0 !important; border-radius: 0 !important;
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    background: #ffffff !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    border-radius: 0 !important;
+    margin-bottom: 24px !important;
 }
 [data-testid="stTabs"] [data-baseweb="tab"] {
-    min-height: var(--touch) !important;
-    font-size: var(--fs-sm) !important;
+    font-size: 14px !important;
     font-weight: 500 !important;
-    color: var(--text-dim) !important;
+    color: #6b7280 !important;
     background: transparent !important;
     border-radius: 0 !important;
     border-bottom: 2px solid transparent !important;
-    padding: 10px 20px !important;
+    padding: 12px 20px !important;
     margin-bottom: -1px;
-    transition: color var(--ease), border-color var(--ease);
-    white-space: nowrap; font-family: inherit !important;
+    transition: color 0.15s, border-color 0.15s;
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
 }
-[data-testid="stTabs"] [data-baseweb="tab"]:hover { color: var(--text) !important; }
+[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+    color: #111827 !important;
+}
 [data-testid="stTabs"] [aria-selected="true"] {
-    color: var(--accent) !important;
-    border-bottom-color: var(--accent) !important;
+    color: #2563eb !important;
+    border-bottom-color: #2563eb !important;
     font-weight: 600 !important;
     background: transparent !important;
 }
-
-/* ════════════════════════════════════════════════════
-   카드
-   ════════════════════════════════════════════════════ */
-.pulse-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    padding: var(--sp-md) var(--sp-md) var(--sp-sm);
-    margin-bottom: var(--sp-sm);
+/* Override Streamlit default red tab indicator */
+[data-testid="stTabs"] [data-baseweb="tab-highlight"],
+[data-testid="stTabs"] [data-baseweb="tab"] [data-testid*="indicator"],
+.stTabs [data-baseweb="tab-highlight"] {
+    background-color: #2563eb !important;
+    background: #2563eb !important;
 }
-.pulse-card-head {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: var(--sp-sm);
-}
-.pulse-card-title {
-    font-size: var(--fs-md);
-    font-weight: 600;
-    color: var(--text);
-    letter-spacing: -0.01em;
-    margin: 0;
-}
-.pulse-card-sub {
-    color: var(--text-mute);
-    font-size: var(--fs-xs);
+/* Tab panel background */
+[data-testid="stTabs"] [data-baseweb="tab-panel"] {
+    background: transparent !important;
+    padding: 0 !important;
 }
 
-/* 필터 바 */
-.pulse-filter {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    padding: var(--sp-sm) var(--sp-md);
-    margin-bottom: var(--sp-sm);
-    display: flex; align-items: center; gap: 8px;
+/* ── KPI 카드 (st.metric) ───────────────────────────────────────── */
+[data-testid="stMetric"] {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 12px !important;
+    padding: 16px 20px !important;
 }
-.pulse-filter-label {
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    color: var(--text-mute);
+[data-testid="stMetricValue"] {
+    color: #111827 !important;
+    font-weight: 700 !important;
+    font-size: 1.5rem !important;
+}
+[data-testid="stMetricLabel"] {
+    color: #6b7280 !important;
+    font-size: 0.78rem !important;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    white-space: nowrap;
-    flex-shrink: 0;
+}
+[data-testid="stMetricDelta"] {
+    font-size: 0.78rem !important;
 }
 
-/* ════════════════════════════════════════════════════
-   입력 필드
-   ════════════════════════════════════════════════════ */
-[data-testid="stMultiSelect"] > div > div,
-[data-testid="stTextInput"] > div > div > input,
-[data-testid="stNumberInput"] input {
-    background: var(--bg) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--r-sm) !important;
-    color: var(--text) !important;
-    font-size: var(--fs-sm) !important;
-    min-height: var(--touch) !important;
-    font-family: inherit !important;
+/* ── 버튼 ───────────────────────────────────────────────────────── */
+.stButton button {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    color: #374151 !important;
+    border-radius: 8px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
+    transition: border-color 0.15s, color 0.15s;
 }
-[data-testid="stTextInput"] > div > div:focus-within,
-[data-testid="stMultiSelect"] > div > div:focus-within,
-[data-testid="stNumberInput"]:focus-within {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 2px var(--accent-s) !important;
+.stButton button:hover {
+    border-color: #2563eb !important;
+    color: #2563eb !important;
 }
-input::placeholder, textarea::placeholder { color: var(--text-mute) !important; }
-[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
-    background: var(--accent-s) !important;
-    border: 1px solid rgba(99,102,241,.4) !important;
-    color: #a5b4fc !important;
-    border-radius: 6px !important;
-    font-size: var(--fs-xs) !important;
+.stButton button[kind="primary"] {
+    background: #2563eb !important;
+    border-color: #2563eb !important;
+    color: #fff !important;
+}
+.stButton button[kind="primary"]:hover {
+    background: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
 }
 
-/* 라디오 */
-[data-testid="stRadio"] label span { color: var(--text) !important; }
-[data-testid="stRadio"] [data-baseweb="radio"] div { border-color: var(--border) !important; }
-
-/* ════════════════════════════════════════════════════
-   채팅 AI 탭
-   ════════════════════════════════════════════════════ */
-[data-testid="stChatInput"] {
-    background: var(--card) !important;
-    border: 1.5px solid var(--border) !important;
-    border-radius: var(--r-lg) !important;
-    transition: border-color var(--ease), box-shadow var(--ease);
-}
-[data-testid="stChatInput"]:focus-within {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 3px var(--accent-s) !important;
-}
-[data-testid="stChatInput"] textarea {
+/* ── 패스워드 입력 필드 (eye icon) ──────────────────────────────── */
+[data-testid="stTextInput"] button,
+[data-testid="stTextInput"] > div > div button {
     background: transparent !important;
     border: none !important;
-    color: var(--text) !important;
-    font-family: inherit !important;
+    color: #9ca3af !important;
+    box-shadow: none !important;
 }
-[data-testid="stChatInput"] textarea::placeholder { color: var(--text-mute) !important; }
+[data-testid="stTextInput"] button:hover {
+    color: #374151 !important;
+    background: transparent !important;
+}
+
+/* ── 채팅 입력 고정 컨테이너 ────────────────────────────────────── */
+.stChatFloatingInputContainer,
+[class*="stChatFloat"],
+[data-testid="stChatInputContainer"],
+.stElementContainer:has([data-testid="stChatInput"]) {
+    background: #f9fafb !important;
+}
+/* Sticky bottom chat bar */
+.stApp > div > div > div:last-child:has([data-testid="stChatInput"]) {
+    background: #f9fafb !important;
+}
+
+/* ── 채팅 메시지 (Claude 스타일) ───────────────────────────────── */
 [data-testid="stChatMessage"] {
     background: transparent !important;
     border: none !important;
-    border-bottom: 1px solid var(--border) !important;
+    padding: 16px 0 !important;
+    border-bottom: 1px solid #f3f4f6 !important;
     border-radius: 0 !important;
-    padding: var(--sp-md) 0 !important;
 }
-[data-testid="stChatMessage"]:last-child { border-bottom: none !important; }
+[data-testid="stChatMessage"]:last-child {
+    border-bottom: none !important;
+}
+[data-testid="stChatMessage"] p {
+    font-size: 15px !important;
+    line-height: 1.75 !important;
+    color: #1f2937 !important;
+}
+/* Chat input (all states including disabled) */
+[data-testid="stChatInput"],
+[data-testid="stChatInput"] > div,
+[data-testid="stChatInput"] > div > div,
+.stChatInput,
+.stChatInput > div {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 12px !important;
+    background: #ffffff !important;
+}
+[data-testid="stChatInputTextArea"],
+[data-testid="stChatInputTextArea"][disabled] {
+    background: #ffffff !important;
+    color: #9ca3af !important;
+}
+/* The whole chat container area */
+.stElementContainer:has([data-testid="stChatInput"]) {
+    background: #f9fafb !important;
+}
+/* The baseweb textarea wrapper inside chat input */
+[data-testid="stChatInput"] [data-baseweb="textarea"],
+[data-testid="stChatInput"] [data-baseweb="base-input"],
+[data-testid="stChatInput"] [data-baseweb="textarea"] > div {
+    background: #ffffff !important;
+    border-radius: 12px !important;
+}
+/* Chat input wrapper that sits at the bottom */
+[data-testid="stBottom"] {
+    background: #f9fafb !important;
+}
+[data-testid="stBottom"] > div {
+    background: #f9fafb !important;
+}
+[data-testid="stChatInput"]:focus-within {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.1) !important;
+}
+[data-testid="stChatInput"] textarea {
+    font-size: 15px !important;
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
+}
 
-/* ════════════════════════════════════════════════════
-   Expander
-   ════════════════════════════════════════════════════ */
-[data-testid="stExpander"] {
-    background: var(--card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--r-md) !important;
-}
-[data-testid="stExpander"]:hover { border-color: var(--accent) !important; }
-[data-testid="stExpander"] summary {
-    min-height: var(--touch) !important; color: var(--text) !important;
-    font-weight: 500 !important; font-size: var(--fs-sm) !important;
-    display: flex; align-items: center;
-}
-
-/* ════════════════════════════════════════════════════
-   데이터프레임
-   ════════════════════════════════════════════════════ */
+/* ── 데이터프레임 ───────────────────────────────────────────────── */
 [data-testid="stDataFrame"] {
-    border: 1px solid var(--border) !important;
-    border-radius: var(--r-md) !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 12px !important;
     overflow: hidden !important;
-}
-[data-testid="stDataFrame"] th {
-    background: var(--card) !important;
-    color: var(--text-mute) !important;
-    font-size: var(--fs-xs) !important;
-    text-transform: uppercase; letter-spacing: 0.04em;
-    border-bottom: 1px solid var(--border) !important;
-    padding: 8px 12px !important;
-    font-weight: 500 !important;
-}
-[data-testid="stDataFrame"] td {
-    background: var(--bg) !important;
-    color: var(--text) !important;
-    font-size: var(--fs-sm) !important;
-    border-bottom: 1px solid var(--border) !important;
-}
-[data-testid="stDataFrame"] tr:hover td { background: var(--card) !important; }
-
-/* ════════════════════════════════════════════════════
-   알림 박스
-   ════════════════════════════════════════════════════ */
-.alert-box {
-    background: rgba(245,158,11,.08);
-    border: 1px solid rgba(245,158,11,.3);
-    border-left: 3px solid var(--warn);
-    border-radius: var(--r-sm);
-    padding: 10px 14px;
-    color: #fbbf24;
-    font-size: var(--fs-sm);
-    margin: 6px 0;
-}
-.info-box {
-    background: var(--accent-s);
-    border: 1px solid rgba(99,102,241,.28);
-    border-left: 3px solid var(--accent);
-    border-radius: var(--r-sm);
-    padding: 10px 14px;
-    color: #a5b4fc;
-    font-size: var(--fs-sm);
-    margin: 6px 0;
-}
-.info-box a { color: var(--accent-2) !important; text-decoration: underline; }
-[data-testid="stAlert"] { border-radius: var(--r-sm) !important; border-left-width: 3px !important; }
-
-/* ════════════════════════════════════════════════════
-   텍스트 / 헤딩
-   ════════════════════════════════════════════════════ */
-h1, h2, h3 { color: var(--text) !important; font-weight: 600 !important; letter-spacing: -0.01em; }
-[data-testid="stSubheader"] { font-size: var(--fs-md) !important; color: var(--text) !important; }
-[data-testid="stSubheader"] p { font-size: var(--fs-md) !important; }
-[data-testid="stCaptionContainer"], .stCaption { color: var(--text-mute) !important; font-size: var(--fs-xs) !important; }
-hr { border-color: var(--border) !important; margin: 10px 0 !important; }
-
-/* Dialog */
-[data-testid="stModal"] > div {
-    background: var(--card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--r-lg) !important;
-    color: var(--text) !important;
+    background: #ffffff !important;
 }
 
-/* 스크롤바 */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--accent); }
-
-/* ════════════════════════════════════════════════════
-   Streamlit 불필요 요소 제거
-   ════════════════════════════════════════════════════ */
-footer, #MainMenu, [data-testid="stToolbar"],
-[data-testid="stDecoration"], [data-testid="stStatusWidget"] { display: none !important; }
-header[data-testid="stHeader"] {
-    background: transparent !important; border-bottom: none !important;
-    height: 0 !important; min-height: 0 !important;
-    padding: 0 !important; overflow: hidden !important;
+/* ── 입력 필드 ─────────────────────────────────────────────────── */
+[data-testid="stTextInput"] > div > div,
+[data-testid="stNumberInput"] input {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
 }
-.appview-container > section.main { padding-top: 0 !important; }
-.main .block-container,
-div.block-container,
-[data-testid="stAppViewBlockContainer"] { padding-top: var(--sp-md) !important; }
-
-/* ════════════════════════════════════════════════════
-   반응형
-   ════════════════════════════════════════════════════ */
-@media (max-width: 1024px) {
-    .main .block-container { padding: var(--sp-sm) var(--sp-md) !important; }
-    .pulse-topbar { flex-direction: column; align-items: flex-start; }
+[data-testid="stMultiSelect"] > div > div {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    background: #ffffff !important;
 }
-@media (max-width: 640px) {
-    .main .block-container { padding: 8px 12px !important; }
-    .pulse-topbar-left h1 { font-size: 1.25rem !important; }
-    .stButton button { min-height: 48px !important; }
-    [data-testid="stTabs"] [data-baseweb="tab"] { padding: 8px 12px !important; }
-    [data-testid="stDataFrame"] td,
-    [data-testid="stDataFrame"] th { font-size: 0.73rem !important; }
+/* Selectbox */
+[data-testid="stSelectbox"] > div > div {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+}
+[data-testid="stSelectbox"] [data-baseweb="select"] {
+    background: #ffffff !important;
+    border-color: #e5e7eb !important;
+}
+[data-testid="stSelectbox"] [data-baseweb="select"] > div {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border-color: #e5e7eb !important;
+    border-radius: 8px !important;
+}
+/* Selectbox selected option text */
+[data-testid="stSelectbox"] [data-baseweb="select"] > div > div > div {
+    color: #111827 !important;
+}
+[data-testid="stSelectbox"] div[value] {
+    color: #111827 !important;
+}
+input::placeholder, textarea::placeholder {
+    color: #9ca3af !important;
+}
+
+/* ── 파일 업로더 ────────────────────────────────────────────────── */
+[data-testid="stFileUploaderDropzone"] {
+    background: #ffffff !important;
+    border: 1.5px dashed #d1d5db !important;
+    border-radius: 12px !important;
+    transition: border-color 0.15s, background 0.15s;
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+    background: #f0f7ff !important;
+    border-color: #2563eb !important;
+}
+/* Fix upload button text doubling artifact */
+[data-testid="stFileUploaderDropzoneButton"],
+[data-testid="stFileUploaderDropzone"] button,
+[data-testid="stFileUploader"] button {
+    background: #f9fafb !important;
+    border: 1px solid #e5e7eb !important;
+    color: #374151 !important;
+    border-radius: 8px !important;
+    font-size: 14px !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+/* Hide the material icon "upload" text that doubles the button label */
+[data-testid="stFileUploaderDropzone"] button [data-testid="stIconMaterial"] {
+    display: none !important;
+}
+[data-testid="stFileUploaderDropzone"] p,
+[data-testid="stFileUploaderDropzone"] small {
+    color: #9ca3af !important;
+    font-size: 13px !important;
+}
+/* Hide drag instructions text */
+[data-testid="stFileUploaderDropzoneInstructions"] {
+    display: none !important;
+}
+[data-testid="stFileUploaderDropzone"] {
+    min-height: 60px !important;
+    display: flex !important;
+    align-items: center !important;
+    padding: 12px 16px !important;
+}
+
+/* ── 섹션 제목 ─────────────────────────────────────────────────── */
+.section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif;
+}
+
+/* ── 컨텐츠 카드 ────────────────────────────────────────────────── */
+.content-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+}
+
+/* ── 온보딩 카드 ────────────────────────────────────────────────── */
+.onboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 24px;
+}
+.onboard-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 22px 20px;
+}
+.onboard-card h4 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #111827;
+    margin: 0 0 8px;
+}
+.onboard-card p {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin: 0;
+    line-height: 1.6;
+}
+.onboard-step {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: center;
+    line-height: 28px;
+    margin-bottom: 12px;
+}
+
+/* ── 구분선 ─────────────────────────────────────────────────────── */
+hr { border-color: #e5e7eb !important; }
+
+/* ── 경고 / 안내 텍스트 ─────────────────────────────────────────── */
+[data-testid="stAlert"] {
+    border-radius: 8px !important;
+}
+
+/* ── 스크롤바 ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+
+/* ── 헤딩 공통 ─────────────────────────────────────────────────── */
+h1, h2, h3 {
+    color: #111827 !important;
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
+}
+p, span, label, div {
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
+}
+
+/* ── 캡션 ──────────────────────────────────────────────────────── */
+[data-testid="stCaptionContainer"], .stCaption {
+    color: #9ca3af !important;
+    font-size: 0.78rem !important;
+}
+
+/* ── 상태 배지 ─────────────────────────────────────────────────── */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+.status-ok {
+    background: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #bbf7d0;
+}
+.status-warn {
+    background: #fffbeb;
+    color: #d97706;
+    border: 1px solid #fde68a;
+}
+.status-info {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+}
+
+/* ── 멀티셀렉트 baseweb 내부 모두 화이트 ───────────────────────── */
+[data-testid="stMultiSelect"] [data-baseweb="select"],
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div > div,
+[data-testid="stMultiSelect"] [data-baseweb="input"],
+[data-testid="stMultiSelect"] [data-baseweb="base-input"] {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border-color: #e5e7eb !important;
+}
+[data-testid="stMultiSelect"] * { color: #111827 !important; }
+[data-testid="stMultiSelect"] input { color: #111827 !important; background: transparent !important; }
+[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+    background: #eff6ff !important;
+    color: #2563eb !important;
+    border: 1px solid #bfdbfe !important;
+    border-radius: 6px !important;
+}
+
+/* ── 드롭다운 메뉴 팝업 (body 레벨 포털 포함) ──────────────── */
+div[data-baseweb="popover"],
+div[data-baseweb="popover"] > div,
+div[data-baseweb="popover"] > div > div {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+}
+ul[data-baseweb="menu"],
+[data-baseweb="menu"] {
+    background: #ffffff !important;
+    padding: 4px !important;
+}
+[data-baseweb="option"],
+[role="option"],
+ul[data-baseweb="menu"] li {
+    background: #ffffff !important;
+    color: #111827 !important;
+    font-size: 14px !important;
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
+    border-radius: 4px !important;
+}
+[data-baseweb="option"]:hover,
+[role="option"]:hover,
+[data-baseweb="option"][aria-selected="true"] {
+    background: #f3f4f6 !important;
+    color: #111827 !important;
+}
+/* 멀티셀렉트 체크마크 */
+[data-baseweb="option"] svg { color: #2563eb !important; }
+
+/* ── 넘버 인풋 +/- 버튼 ──────────────────────────────────────── */
+[data-testid="stNumberInput"] button {
+    background: #f9fafb !important;
+    border: 1px solid #e5e7eb !important;
+    color: #374151 !important;
+}
+
+/* ── 셀렉트박스 드롭다운 내부 ────────────────────────────────── */
+[data-testid="stSelectbox"] [data-baseweb="menu"],
+[data-testid="stSelectbox"] li {
+    background: #ffffff !important;
+    color: #111827 !important;
+}
+[data-testid="stSelectbox"] li:hover {
+    background: #f3f4f6 !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
 # =============================================================================
-# ① 세션 스테이트 초기화
-#    st.session_state: Streamlit의 서버 메모리에 유지되는 딕셔너리
-#    - 브라우저 새로고침 전까지 값이 유지됨
-#    - API 키는 세션에만 저장하고 절대 디스크에 쓰지 않음
+# 세션 스테이트 초기화
 # =============================================================================
 def init_session_state():
-    """앱 최초 로드 시 필요한 상태 변수를 초기화한다."""
     defaults = {
-        # ── API 설정 ──
-        "llm_provider": "openai",         # 선택된 LLM 공급자
-        "api_key": "",                     # API 키 (메모리에만 존재)
-        "custom_base_url": "",             # 커스텀 OpenAI 호환 API URL
-        "custom_model": "gpt-4o-mini",    # 커스텀 모델 이름
-        "api_configured": False,           # API 키 설정 완료 여부
-        # ── 데이터 ──
-        "df_packets": None,                # 파싱된 패킷 DataFrame
-        "pcap_filename": "",               # 업로드된 파일 이름
-        # ── 채팅 ──
-        "chat_history": [],                # [{"role": "user"/"assistant", "content": "..."}]
-        "context_injected": False,         # 패킷 컨텍스트 주입 여부
+        "llm_provider": "openai",
+        "api_key": "",
+        "custom_base_url": "",
+        "custom_model": "gpt-4o-mini",
+        "api_configured": False,
+        "df_packets": None,
+        "pcap_filename": "",
+        "chat_history": [],
+        "context_injected": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -564,27 +560,16 @@ init_session_state()
 
 
 # =============================================================================
-# ② pcap 파일 파싱 함수
-#    scapy: 저수준 패킷 조작/분석 라이브러리
-#    rdpcap(): pcap 파일을 읽어 패킷 리스트를 반환
+# pcap 파일 파싱 함수
 # =============================================================================
 @st.cache_data(show_spinner=False)
 def parse_pcap(file_bytes: bytes, filename: str) -> pd.DataFrame:
-    """
-    pcap/pcapng 파일 바이트를 파싱하여 pandas DataFrame으로 반환한다.
-
-    Returns:
-        DataFrame 컬럼:
-          no, time, relative_time, src, dst, protocol,
-          length, sport, dport, info
-    """
     try:
         from scapy.all import rdpcap, IP, TCP, UDP, ICMP, ARP, DNS, IPv6
     except ImportError:
         st.error("scapy가 설치되지 않았습니다. `pip install scapy` 를 실행하세요.")
         return pd.DataFrame()
 
-    # 임시 파일에 저장 후 scapy로 읽기 (scapy는 파일 경로를 요구)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pcap") as tmp:
         tmp.write(file_bytes)
         tmp_path = tmp.name
@@ -592,17 +577,16 @@ def parse_pcap(file_bytes: bytes, filename: str) -> pd.DataFrame:
     try:
         packets = rdpcap(tmp_path)
     finally:
-        os.unlink(tmp_path)  # 임시 파일 즉시 삭제
+        os.unlink(tmp_path)
 
     rows = []
-    base_time = None  # 상대 시간 계산용 기준 타임스탬프
+    base_time = None
 
     for i, pkt in enumerate(packets):
         ts = float(pkt.time)
         if base_time is None:
             base_time = ts
 
-        # ── 프로토콜 판별 ─────────────────────────────────────────
         proto = "Other"
         sport, dport, info = "", "", ""
 
@@ -615,7 +599,6 @@ def parse_pcap(file_bytes: bytes, filename: str) -> pd.DataFrame:
             flags = pkt[TCP].flags
             flag_str = str(flags)
             info = f"TCP {sport}→{dport} [{flag_str}]"
-            # 잘 알려진 포트로 상위 프로토콜 추정
             known = {80: "HTTP", 443: "HTTPS", 21: "FTP",
                      22: "SSH", 25: "SMTP", 53: "DNS",
                      3306: "MySQL", 5432: "PostgreSQL"}
@@ -640,7 +623,6 @@ def parse_pcap(file_bytes: bytes, filename: str) -> pd.DataFrame:
             proto = "ARP"
             info = f"ARP {pkt[ARP].op}"
 
-        # ── IP 레이어 ─────────────────────────────────────────────
         if pkt.haslayer(IP):
             src = pkt[IP].src
             dst = pkt[IP].dst
@@ -670,14 +652,9 @@ def parse_pcap(file_bytes: bytes, filename: str) -> pd.DataFrame:
 
 
 # =============================================================================
-# ③ AI 컨텍스트 생성 함수
-#    업로드된 패킷 데이터를 LLM이 이해할 수 있는 텍스트 요약으로 변환
+# AI 컨텍스트 생성 함수
 # =============================================================================
 def build_packet_context(df: pd.DataFrame) -> str:
-    """
-    DataFrame 통계를 AI 프롬프트용 컨텍스트 문자열로 변환한다.
-    토큰 낭비를 줄이기 위해 핵심 통계만 추출한다.
-    """
     if df is None or df.empty:
         return "패킷 데이터 없음"
 
@@ -686,7 +663,6 @@ def build_packet_context(df: pd.DataFrame) -> str:
     top_src = df["src"].value_counts().head(5).to_dict()
     top_dst = df["dst"].value_counts().head(5).to_dict()
 
-    # TCP 플래그 이상 탐지 힌트 (RST, SYN 폭주 등)
     suspicious_hints = []
     if "TCP" in df["protocol"].values:
         tcp_df = df[df["protocol"] == "TCP"]
@@ -694,9 +670,9 @@ def build_packet_context(df: pd.DataFrame) -> str:
             syn_ratio = tcp_df["info"].str.contains("S", na=False).mean()
             rst_count = tcp_df["info"].str.contains("R", na=False).sum()
             if syn_ratio > 0.7:
-                suspicious_hints.append(f"⚠ SYN 패킷 비율 {syn_ratio:.0%} — SYN Flood 의심")
+                suspicious_hints.append(f"SYN 패킷 비율 {syn_ratio:.0%} — SYN Flood 의심")
             if rst_count > 50:
-                suspicious_hints.append(f"⚠ RST 패킷 {rst_count}개 — 연결 거부/스캔 의심")
+                suspicious_hints.append(f"RST 패킷 {rst_count}개 — 연결 거부/스캔 의심")
 
     time_range = ""
     if "relative_time" in df.columns and total > 1:
@@ -732,25 +708,15 @@ def build_packet_context(df: pd.DataFrame) -> str:
 
 
 # =============================================================================
-# ④ LLM API 호출 함수 (OpenAI / Anthropic / 커스텀 분기)
+# LLM API 호출 함수
 # =============================================================================
 def call_llm(messages: list) -> str:
-    """
-    선택된 LLM에 메시지 목록을 전송하고 응답 텍스트를 반환한다.
-
-    Args:
-        messages: [{"role": "system"/"user"/"assistant", "content": "..."}]
-
-    Returns:
-        AI 응답 문자열 (오류 시 오류 메시지 반환)
-    """
     provider = st.session_state["llm_provider"]
     api_key  = st.session_state["api_key"]
 
     if not api_key:
-        return "❌ API 키가 설정되지 않았습니다. 사이드바의 [API 키 설정] 버튼을 클릭하세요."
+        return "API 키가 설정되지 않았습니다. [API 설정] 탭에서 키를 입력하세요."
 
-    # ── OpenAI (ChatGPT) ──────────────────────────────────────────
     if provider == "openai":
         try:
             from openai import OpenAI
@@ -763,16 +729,14 @@ def call_llm(messages: list) -> str:
             )
             return resp.choices[0].message.content
         except ImportError:
-            return "❌ openai 패키지 미설치: `pip install openai`"
+            return "openai 패키지 미설치: `pip install openai`"
         except Exception as e:
-            return f"❌ OpenAI 오류: {e}"
+            return f"OpenAI 오류: {e}"
 
-    # ── Anthropic (Claude) ────────────────────────────────────────
     elif provider == "anthropic":
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=api_key)
-            # Anthropic API는 system 메시지를 별도 파라미터로 분리
             system_msg = ""
             chat_msgs = []
             for m in messages:
@@ -789,18 +753,17 @@ def call_llm(messages: list) -> str:
             )
             return resp.content[0].text
         except ImportError:
-            return "❌ anthropic 패키지 미설치: `pip install anthropic`"
+            return "anthropic 패키지 미설치: `pip install anthropic`"
         except Exception as e:
-            return f"❌ Claude 오류: {e}"
+            return f"Claude 오류: {e}"
 
-    # ── 커스텀 OpenAI 호환 API ────────────────────────────────────
     elif provider == "custom":
         try:
             from openai import OpenAI
             base_url = st.session_state.get("custom_base_url", "").strip()
             model    = st.session_state.get("custom_model", "gpt-4o-mini").strip()
             if not base_url:
-                return "❌ 커스텀 API의 Base URL을 설정하세요."
+                return "커스텀 API의 Base URL을 설정하세요."
             client = OpenAI(api_key=api_key, base_url=base_url)
             resp = client.chat.completions.create(
                 model=model,
@@ -810,38 +773,35 @@ def call_llm(messages: list) -> str:
             )
             return resp.choices[0].message.content
         except ImportError:
-            return "❌ openai 패키지 미설치: `pip install openai`"
+            return "openai 패키지 미설치: `pip install openai`"
         except Exception as e:
-            return f"❌ 커스텀 API 오류: {e}"
+            return f"커스텀 API 오류: {e}"
 
-    return "❌ 지원하지 않는 LLM 공급자입니다."
+    return "지원하지 않는 LLM 공급자입니다."
 
 
 # =============================================================================
-# ⑤ 시스템 프롬프트 생성
-#    3대 전문 분석 영역을 명시한 전문가 페르소나 주입
+# 시스템 프롬프트 생성
 # =============================================================================
 def build_system_prompt(packet_context: str) -> str:
     return f"""당신은 네트워크 보안 및 패킷 분석 전문가 AI 'PacketAI'입니다.
 사용자가 업로드한 pcap 파일을 분석하여 아래 3가지 영역에서 전문적인 인사이트를 제공하세요.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔧 전문 분석 영역 1: 네트워크 문제 해결
+전문 분석 영역 1: 네트워크 문제 해결
   - 통신 장애의 원인 파악 (라우팅 문제, ARP 브로드캐스트 폭주 등)
   - 패킷 손실(Packet Loss) 징후 탐지 (TCP 재전송, 중복 ACK 등)
   - 레이턴시(지연) 유발 구간 진단 (RTT 측정, TCP Window 크기 분석)
 
-🛡 전문 분석 영역 2: 보안 및 악성코드 분석
+전문 분석 영역 2: 보안 및 악성코드 분석
   - 비정상적인 트래픽 패턴 탐지 (포트 스캔, DDoS, SYN Flood)
   - 외부 해킹 시도 및 침투 흔적 분석
   - 악성코드 C&C(Command & Control) 서버 통신 내역 탐지 및 경고
   - DNS Tunneling, 데이터 유출(Data Exfiltration) 패턴 확인
 
-💻 전문 분석 영역 3: 개발 및 디버깅
+전문 분석 영역 3: 개발 및 디버깅
   - 네트워크 프로토콜 개발 검증 (요청/응답 패턴 확인)
   - API 통신 세션 오류 분석 (TCP 3-Way Handshake 실패, TLS 협상 오류)
   - HTTP/HTTPS 통신 이상 탐지 (비정상 상태 코드, 응답 지연 등)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 답변 원칙:
 1. 한국어로 답변하되, 기술 용어는 영문 원어를 병기하세요.
@@ -855,584 +815,306 @@ def build_system_prompt(packet_context: str) -> str:
 
 
 # =============================================================================
-# ⑥ API 키 설정 팝업 (st.dialog 활용)
-#    @st.dialog 데코레이터로 모달 창을 구현
+# 앱 상단 타이틀
 # =============================================================================
-@st.dialog("🔑 API 키 설정", width="large")
-def api_key_dialog():
-    """LLM 공급자 선택 및 API 키 입력 모달 창."""
-    st.markdown("""
-    <div class="info-box">
-    ℹ API 키는 <strong>브라우저 세션 메모리에만</strong> 저장되며, 서버 디스크나 로그에 기록되지 않습니다.<br>
-    페이지를 새로고침하면 키는 초기화됩니다.
-    </div>
-    """, unsafe_allow_html=True)
+df_packets  = st.session_state["df_packets"]
+api_ok      = st.session_state["api_configured"]
+pcap_name   = st.session_state.get("pcap_filename", "")
+provider_lbl = {
+    "openai":    "ChatGPT",
+    "anthropic": "Claude",
+    "custom":    "커스텀 API",
+}.get(st.session_state.get("llm_provider", ""), "")
 
-    # ── LLM 공급자 선택 ───────────────────────────────────────────
-    provider = st.radio(
-        "사용할 AI 모델을 선택하세요",
-        options=["openai", "anthropic", "custom"],
-        format_func=lambda x: {
-            "openai":    "🤖 ChatGPT (OpenAI gpt-4o-mini)",
-            "anthropic": "🧠 Claude (Anthropic claude-opus-4-5)",
-            "custom":    "⚙️ 커스텀 (OpenAI 호환 API)",
-        }[x],
-        index=["openai", "anthropic", "custom"].index(
-            st.session_state["llm_provider"]
-        ),
-        horizontal=True,
-    )
-
-    st.divider()
-
-    # ── 공급자별 입력 폼 ──────────────────────────────────────────
-    api_key = st.text_input(
-        "API Key",
-        value=st.session_state["api_key"],
-        type="password",
-        placeholder={
-            "openai":    "sk-...",
-            "anthropic": "sk-ant-...",
-            "custom":    "Bearer 토큰 또는 API 키",
-        }[provider],
-        help="입력된 키는 이 세션에서만 유지됩니다.",
-    )
-
-    custom_base_url, custom_model = "", "gpt-4o-mini"
-    if provider == "custom":
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            custom_base_url = st.text_input(
-                "Base URL",
-                value=st.session_state.get("custom_base_url", ""),
-                placeholder="https://api.example.com/v1",
-                help="OpenAI 호환 API의 엔드포인트 URL",
-            )
-        with col2:
-            custom_model = st.text_input(
-                "Model 이름",
-                value=st.session_state.get("custom_model", "gpt-4o-mini"),
-                placeholder="gpt-4o-mini",
-            )
-
-    # ── 저장 버튼 ─────────────────────────────────────────────────
-    col_save, col_clear = st.columns([3, 1])
-    with col_save:
-        if st.button("✅ 저장 및 닫기", type="primary", use_container_width=True):
-            if not api_key.strip():
-                st.error("API 키를 입력해주세요.")
-            else:
-                # 세션 스테이트에 저장 (메모리에만 존재)
-                st.session_state["llm_provider"]    = provider
-                st.session_state["api_key"]         = api_key.strip()
-                st.session_state["custom_base_url"] = custom_base_url.strip()
-                st.session_state["custom_model"]    = custom_model.strip()
-                st.session_state["api_configured"]  = True
-                st.success("API 키가 세션에 저장되었습니다!")
-                st.rerun()
-    with col_clear:
-        if st.button("🗑 초기화", use_container_width=True):
-            st.session_state["api_key"]        = ""
-            st.session_state["api_configured"] = False
-            st.rerun()
-
-
-# =============================================================================
-# ⑦ 사이드바 구성
-# =============================================================================
-with st.sidebar:
-    # ── 브랜드 + 네비게이션 ─────────────────────────────────────
-    st.markdown("""
-    <div class="pulse-brand">
-      <div class="pulse-mark"></div>
-      PacketAI
-    </div>
-    <nav class="pulse-nav">
-      <div class="pulse-nav-item active" data-tab="0">
-        <span class="nav-icon">📊</span> 대시보드 시각화
-      </div>
-      <div class="pulse-nav-item" data-tab="1">
-        <span class="nav-icon">🤖</span> AI 패킷 분석가
-      </div>
-      <div class="pulse-nav-item" data-tab="0" data-scroll="packet-table">
-        <span class="nav-icon">📋</span> 패킷 테이블
-      </div>
-    </nav>
-    <hr class="pulse-nav-divider"/>
-    <div style="font-size:.72rem;font-weight:600;color:var(--text-mute);
-                text-transform:uppercase;letter-spacing:.05em;
-                padding:0 12px 8px;">환경 설정</div>
-    """, unsafe_allow_html=True)
-
-    # ── API 키 상태 표시 및 설정 버튼 ────────────────────────────
-    if st.session_state["api_configured"]:
-        provider_label = {
-            "openai":    "ChatGPT (OpenAI)",
-            "anthropic": "Claude (Anthropic)",
-            "custom":    "커스텀 API",
-        }.get(st.session_state["llm_provider"], "Unknown")
-        st.success(f"✅ {provider_label} 연결됨")
-    else:
-        st.warning("⚠ API 키 미설정")
-
-    if st.button("🔑 API 키 설정", use_container_width=True, type="primary"):
-        api_key_dialog()
-
-    st.markdown("---")
-
-    # ── pcap 파일 업로더 ──────────────────────────────────────────
-    st.markdown("### 📁 파일 업로드")
-    uploaded_file = st.file_uploader(
-        "pcap / pcapng 파일",
-        type=["pcap", "pcapng", "cap"],
-        help="Wireshark 등으로 캡처한 패킷 파일을 업로드하세요.",
-    )
-
-    if uploaded_file is not None:
-        file_bytes = uploaded_file.read()
-        file_size_kb = len(file_bytes) / 1024
-
-        st.info(f"📄 {uploaded_file.name}\n{file_size_kb:.1f} KB")
-
-        # 파일이 바뀌었을 때만 재파싱 (캐시 활용)
-        if st.session_state["pcap_filename"] != uploaded_file.name:
-            with st.spinner("패킷 파싱 중..."):
-                df = parse_pcap(file_bytes, uploaded_file.name)
-                st.session_state["df_packets"]        = df
-                st.session_state["pcap_filename"]     = uploaded_file.name
-                st.session_state["chat_history"]      = []
-                st.session_state["context_injected"]  = False
-            if not df.empty:
-                st.success(f"✅ {len(df):,}개 패킷 로드 완료")
-
-    st.markdown("---")
-
-    # ── 채팅 초기화 ───────────────────────────────────────────────
-    if st.button("🗑 대화 초기화", use_container_width=True):
-        st.session_state["chat_history"]     = []
-        st.session_state["context_injected"] = False
-        st.rerun()
-
-    st.markdown("---")
-    st.markdown(
-        "<div style='color:var(--text-mute);font-size:0.74rem;text-align:center;padding:4px 0;'>"
-        "KDN Vibe Coding 과정<br>"
-        "<span style='color:var(--text-dim);'>PacketAI Dashboard</span> · v2.0"
-        "</div>",
-        unsafe_allow_html=True
-    )
-
-
-# =============================================================================
-# ⑧ 메인 화면 타이틀
-# =============================================================================
-df_packets   = st.session_state["df_packets"]
-api_ok       = st.session_state["api_configured"]
-pcap_name    = st.session_state.get("pcap_filename", "")
-provider_lbl = {"openai": "ChatGPT", "anthropic": "Claude", "custom": "커스텀 API"}.get(
-    st.session_state.get("llm_provider", ""), "")
-
-# ── Pulse Topbar ─────────────────────────────────────────────────────────────
-from datetime import date
-today = date.today()
+# 상태 배지 HTML
 badges_html = ""
 if api_ok:
-    badges_html += f'<span class="pulse-badge pulse-badge--ok">● {provider_lbl} 연결됨</span>'
+    badges_html += f'<span class="status-badge status-ok">{provider_lbl} 연결됨</span>'
 else:
-    badges_html += '<span class="pulse-badge pulse-badge--warn">⚠ API 미설정</span>'
+    badges_html += '<span class="status-badge status-warn">API 미설정</span>'
 if pcap_name:
-    short_name = pcap_name if len(pcap_name) <= 22 else pcap_name[:20] + "…"
-    badges_html += f'<span class="pulse-badge pulse-badge--info">📄 {short_name}</span>'
+    short_name = pcap_name if len(pcap_name) <= 28 else pcap_name[:26] + "…"
+    badges_html += f'&nbsp;&nbsp;<span class="status-badge status-info">{short_name}</span>'
 
 st.markdown(f"""
-<div class="pulse-topbar">
-  <div class="pulse-topbar-left">
-    <h1>KDN 패킷 분석 대시보드</h1>
-    <p>pcap 업로드 → 트래픽 시각화 → AI 보안 분석</p>
+<div style="background:#ffffff;border-bottom:1px solid #e5e7eb;
+            padding:16px 0 0;margin-bottom:0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;
+              flex-wrap:wrap;gap:10px;padding-bottom:14px;">
+    <h1 style="font-size:1.2rem;font-weight:700;color:#111827;margin:0;
+               font-family:'Inter',-apple-system,'Malgun Gothic',sans-serif;
+               letter-spacing:-0.02em;">
+      KDN 패킷 분석기
+    </h1>
+    <div style="display:flex;align-items:center;gap:8px;">{badges_html}</div>
   </div>
-  <div class="pulse-topbar-right">{badges_html}</div>
 </div>
 """, unsafe_allow_html=True)
 
-# ── 데이터 없을 때 온보딩 ─────────────────────────────────────────────────────
-if df_packets is None or df_packets.empty:
-    st.markdown("""
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:28px 0 0;">
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 20px;">
-        <div style="width:36px;height:36px;border-radius:8px;background:rgba(99,102,241,.15);
-             display:flex;align-items:center;justify-content:center;font-size:1.1rem;margin-bottom:12px;">📁</div>
-        <p style="font-weight:600;color:var(--text);margin:0 0 6px;font-size:.95rem;">1. 파일 업로드</p>
-        <p style="color:var(--text-dim);font-size:.83rem;margin:0;line-height:1.6;">
-          사이드바에서 <strong style="color:var(--text);">pcap / pcapng</strong> 파일을 드래그하거나 클릭해 선택하세요.
-        </p>
-      </div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 20px;">
-        <div style="width:36px;height:36px;border-radius:8px;background:rgba(34,211,238,.12);
-             display:flex;align-items:center;justify-content:center;font-size:1.1rem;margin-bottom:12px;">🔑</div>
-        <p style="font-weight:600;color:var(--text);margin:0 0 6px;font-size:.95rem;">2. AI 모델 연결</p>
-        <p style="color:var(--text-dim);font-size:.83rem;margin:0;line-height:1.6;">
-          <strong style="color:var(--text);">API 키 설정</strong> 버튼으로 OpenAI · Claude · 커스텀 API를 선택하세요.
-        </p>
-      </div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 20px;">
-        <div style="width:36px;height:36px;border-radius:8px;background:rgba(34,197,94,.12);
-             display:flex;align-items:center;justify-content:center;font-size:1.1rem;margin-bottom:12px;">📊</div>
-        <p style="font-weight:600;color:var(--text);margin:0 0 6px;font-size:.95rem;">3. 분석 시작</p>
-        <p style="color:var(--text-dim);font-size:.83rem;margin:0;line-height:1.6;">
-          트래픽 시각화와 AI 보안 분석을 탭에서 바로 확인할 수 있습니다.
-        </p>
-      </div>
-    </div>
-    <p style="color:var(--text-mute);font-size:.78rem;text-align:center;margin-top:20px;">
-      샘플 파일 →
-      <a href="https://wiki.wireshark.org/SampleCaptures" target="_blank"
-         style="color:var(--accent-2);text-decoration:underline;">Wireshark Sample Captures</a>
-    </p>
-    """, unsafe_allow_html=True)
-    st.stop()
+
+# =============================================================================
+# 메인 탭 네비게이션
+# =============================================================================
+tab_dash, tab_chat, tab_api = st.tabs(["대시보드", "패킷 분석기", "API 설정"])
 
 
 # =============================================================================
-# ⑨ KPI 메트릭 상단 배치 (st.metric)
+# 탭 1: 대시보드
 # =============================================================================
-total_packets  = len(df_packets)
-unique_src     = df_packets["src"].nunique()
-unique_dst     = df_packets["dst"].nunique()
-unique_proto   = df_packets["protocol"].nunique()
-avg_pkt_size   = round(df_packets["length"].mean(), 1)
-duration       = df_packets["relative_time"].max() if "relative_time" in df_packets.columns else 0
-pps            = round(total_packets / duration, 1) if duration > 0 else 0
-
-kpi_data = [
-    ("📦 총 패킷 수",     f"{total_packets:,}"),
-    ("🖥 출발지 IP",      f"{unique_src:,}"),
-    ("🎯 목적지 IP",      f"{unique_dst:,}"),
-    ("🔌 프로토콜",       f"{unique_proto}"),
-    ("📏 평균 크기",      f"{avg_pkt_size} B"),
-    ("⚡ 평균 PPS",       f"{pps}"),
-]
-cols_kpi = st.columns(len(kpi_data))
-for col, (label, value) in zip(cols_kpi, kpi_data):
-    with col:
-        st.metric(label, value)
-st.markdown('<div style="margin-bottom:8px;"></div>', unsafe_allow_html=True)
-
-
-# =============================================================================
-# ⑩ 탭 분리: 대시보드 시각화 / AI 패킷 분석가
-# =============================================================================
-tab_dash, tab_ai = st.tabs(["📊 대시보드 시각화", "🤖 AI 패킷 분석가"])
-
-# ── 사이드바 네비게이션 ↔ Streamlit 탭 연결 ─────────────────────────────────
-components.html("""
-<script>
-(function () {
-    function init() {
-        var doc = window.parent.document;
-        var navItems = doc.querySelectorAll('.pulse-nav-item[data-tab]');
-        var stTabs  = doc.querySelectorAll('[data-baseweb="tab"]');
-
-        if (!navItems.length || !stTabs.length) {
-            setTimeout(init, 150);
-            return;
-        }
-
-        /* 현재 활성 Streamlit 탭을 읽어 nav 싱크 */
-        function syncNav() {
-            var activeIdx = 0;
-            stTabs.forEach(function (t, i) {
-                if (t.getAttribute('aria-selected') === 'true') activeIdx = i;
-            });
-            navItems.forEach(function (n) { n.classList.remove('active'); });
-            doc.querySelectorAll('.pulse-nav-item[data-tab="' + activeIdx + '"]')
-               .forEach(function (n) { n.classList.add('active'); });
-        }
-        syncNav();
-
-        /* 클릭 핸들러 */
-        navItems.forEach(function (item) {
-            item.onclick = function () {
-                var idx = parseInt(this.getAttribute('data-tab'), 10);
-                var allTabs = doc.querySelectorAll('[data-baseweb="tab"]');
-
-                /* 탭 클릭 */
-                if (allTabs[idx]) allTabs[idx].click();
-
-                /* nav 활성 표시 즉시 반영 */
-                navItems.forEach(function (n) { n.classList.remove('active'); });
-                doc.querySelectorAll('.pulse-nav-item[data-tab="' + idx + '"]')
-                   .forEach(function (n) { n.classList.add('active'); });
-
-                /* 패킷 테이블 스크롤 */
-                if (item.getAttribute('data-scroll') === 'packet-table') {
-                    setTimeout(function () {
-                        var tbl = doc.querySelector('[data-testid="stDataFrame"]');
-                        if (tbl) tbl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }, 400);
-                }
-            };
-        });
-
-        /* Streamlit 탭 직접 클릭 시에도 nav 싱크 */
-        stTabs.forEach(function (t) {
-            t.addEventListener('click', function () {
-                setTimeout(syncNav, 100);
-            });
-        });
-    }
-
-    setTimeout(init, 400);
-})();
-</script>
-""", height=0)
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  탭 1: 대시보드 시각화
-# ─────────────────────────────────────────────────────────────────────────────
 with tab_dash:
 
-    # ── 차트 행 1: 프로토콜 분포 + 시간별 트래픽 ─────────────────
-    col_chart1, col_chart2 = st.columns(2)
-
-    with col_chart1:
-        st.subheader("🔌 프로토콜별 패킷 분포")
-        proto_counts = df_packets["protocol"].value_counts().reset_index()
-        proto_counts.columns = ["protocol", "count"]
-
-        fig_proto = px.pie(
-            proto_counts,
-            values="count",
-            names="protocol",
-            hole=0.5,
-            color_discrete_sequence=["#6366f1","#22d3ee","#a78bfa","#f0abfc","#818cf8","#67e8f9","#c4b5fd","#a5f3fc"],
+    # ── 파일 업로드 ─────────────────────────────────────────────────
+    col_upload, col_status = st.columns([3, 1])
+    with col_upload:
+        uploaded_file = st.file_uploader(
+            "pcap / pcapng 파일 업로드",
+            type=["pcap", "pcapng", "cap"],
+            help="Wireshark 등으로 캡처한 패킷 파일을 업로드하세요.",
+            label_visibility="collapsed",
         )
-        fig_proto.update_traces(
-            textposition="inside",
-            textinfo="percent+label",
-            marker=dict(line=dict(color="#161a25", width=2)),
-        )
-        fig_proto.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#a4abbb",
-            font_family="Inter, system-ui",
-            showlegend=True,
-            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#6b7387"),
-                        orientation="v", yanchor="middle", y=0.5),
-            margin=dict(t=10, b=10, l=0, r=0),
-            height=300,
-        )
-        st.plotly_chart(fig_proto, use_container_width=True)
+    with col_status:
+        if uploaded_file is not None:
+            file_bytes = uploaded_file.read()
+            file_size_kb = len(file_bytes) / 1024
+            st.markdown(
+                f'<p style="font-size:13px;color:#374151;margin:8px 0 4px;font-weight:500;">'
+                f'{uploaded_file.name}</p>'
+                f'<p style="font-size:12px;color:#9ca3af;margin:0;">{file_size_kb:.1f} KB</p>',
+                unsafe_allow_html=True
+            )
+            if st.session_state["pcap_filename"] != uploaded_file.name:
+                with st.spinner("패킷 파싱 중..."):
+                    df = parse_pcap(file_bytes, uploaded_file.name)
+                    st.session_state["df_packets"]       = df
+                    st.session_state["pcap_filename"]    = uploaded_file.name
+                    st.session_state["chat_history"]     = []
+                    st.session_state["context_injected"] = False
+                st.rerun()
 
-    with col_chart2:
-        st.subheader("📈 시간별 트래픽 트렌드")
-        # 상대 시간을 1초 단위 버킷으로 집계
+    # ── 데이터 없을 때 온보딩 ────────────────────────────────────────
+    df_packets = st.session_state["df_packets"]
+    if df_packets is None or df_packets.empty:
+        st.markdown("""
+        <div style="margin:32px 0 8px;">
+          <p style="font-size:1rem;font-weight:600;color:#111827;margin:0 0 6px;">
+            패킷 파일을 업로드하여 분석을 시작하세요
+          </p>
+          <p style="font-size:0.88rem;color:#6b7280;margin:0 0 24px;">
+            pcap 또는 pcapng 형식의 파일을 위 영역에 드래그하거나 클릭하여 선택하세요.
+          </p>
+        </div>
+        <div class="onboard-grid">
+          <div class="onboard-card">
+            <div class="onboard-step">1</div>
+            <h4>파일 업로드</h4>
+            <p>Wireshark 또는 tcpdump로 캡처한 pcap / pcapng 파일을 업로드하세요.</p>
+          </div>
+          <div class="onboard-card">
+            <div class="onboard-step">2</div>
+            <h4>트래픽 시각화</h4>
+            <p>KPI 지표, 트래픽 트렌드 차트, 패킷 테이블로 데이터를 한눈에 확인하세요.</p>
+          </div>
+          <div class="onboard-card">
+            <div class="onboard-step">3</div>
+            <h4>AI 보안 분석</h4>
+            <p>패킷 분석기 탭에서 AI에게 보안 위협, 성능 이슈, 통신 오류를 질문하세요.</p>
+          </div>
+        </div>
+        <p style="font-size:0.8rem;color:#9ca3af;margin-top:20px;text-align:center;">
+          샘플 파일:
+          <a href="https://wiki.wireshark.org/SampleCaptures" target="_blank"
+             style="color:#2563eb;text-decoration:underline;">
+            Wireshark Sample Captures
+          </a>
+        </p>
+        """, unsafe_allow_html=True)
+    else:
+        # ── KPI 메트릭 ────────────────────────────────────────────────
+        total_packets = len(df_packets)
+        unique_src    = df_packets["src"].nunique()
+        unique_dst    = df_packets["dst"].nunique()
+        unique_proto  = df_packets["protocol"].nunique()
+        avg_pkt_size  = round(df_packets["length"].mean(), 1)
+        duration      = df_packets["relative_time"].max() if "relative_time" in df_packets.columns else 0
+        pps           = round(total_packets / duration, 1) if duration > 0 else 0
+
+        kpi_cols = st.columns(6)
+        kpi_data = [
+            ("총 패킷 수",  f"{total_packets:,}"),
+            ("출발지 IP",   f"{unique_src:,}"),
+            ("목적지 IP",   f"{unique_dst:,}"),
+            ("프로토콜",    f"{unique_proto}"),
+            ("평균 크기",   f"{avg_pkt_size} B"),
+            ("PPS",         f"{pps}"),
+        ]
+        for col, (label, value) in zip(kpi_cols, kpi_data):
+            with col:
+                st.metric(label, value)
+
+        st.markdown('<div style="margin-bottom:8px;"></div>', unsafe_allow_html=True)
+
+        # ── 트래픽 트렌드 차트 (1개만) ───────────────────────────────
+        st.markdown('<p style="font-size:12px;font-weight:600;color:#374151;letter-spacing:0.06em;text-transform:uppercase;margin:16px 0 8px;">트래픽 트렌드</p>', unsafe_allow_html=True)
         df_time = df_packets.copy()
-        df_time["second"] = df_time["relative_time"].astype(int)
-        traffic_trend = df_time.groupby("second").size().reset_index(name="packets")
+        # Use millisecond buckets for short captures, second buckets for longer ones
+        time_range_val = df_packets["relative_time"].max() if "relative_time" in df_packets.columns else 0
+        if time_range_val < 2.0 and time_range_val > 0:
+            # Use 100ms buckets
+            df_time["bucket"] = (df_time["relative_time"] * 10).astype(int) / 10.0
+            x_label = "경과 시간 (초)"
+        else:
+            df_time["bucket"] = df_time["relative_time"].astype(int)
+            x_label = "경과 시간 (초)"
+        traffic_trend = df_time.groupby("bucket").size().reset_index(name="packets")
+        traffic_trend = traffic_trend.rename(columns={"bucket": "second"})
 
-        fig_trend = px.area(
-            traffic_trend,
-            x="second",
-            y="packets",
-            labels={"second": "경과 시간 (초)", "packets": "패킷 수"},
-            color_discrete_sequence=["#6366f1"],
-        )
-        fig_trend.update_traces(
-            fillcolor="rgba(99,102,241,0.12)",
-            line_color="#6366f1",
-            line_width=2,
-        )
+        fig_trend = go.Figure()
+        fig_trend.add_trace(go.Scatter(
+            x=traffic_trend["second"],
+            y=traffic_trend["packets"],
+            mode="lines",
+            fill="tozeroy",
+            line=dict(color="#2563eb", width=2),
+            fillcolor="rgba(37,99,235,0.08)",
+            name="패킷 수",
+        ))
         fig_trend.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#a4abbb",
-            font_family="Inter, system-ui",
-            xaxis=dict(gridcolor="#232838", color="#6b7387", zeroline=False),
-            yaxis=dict(gridcolor="#232838", color="#6b7387", zeroline=False),
-            margin=dict(t=10, b=10, l=0, r=0),
-            height=300,
+            plot_bgcolor="#ffffff",
+            font=dict(
+                family="Inter, -apple-system, sans-serif",
+                color="#6b7280",
+                size=12,
+            ),
+            xaxis=dict(
+                title=x_label,
+                gridcolor="#f3f4f6",
+                linecolor="#e5e7eb",
+                tickcolor="#e5e7eb",
+                zeroline=False,
+                title_font=dict(size=12, color="#6b7280"),
+            ),
+            yaxis=dict(
+                title="패킷 수",
+                gridcolor="#f3f4f6",
+                linecolor="#e5e7eb",
+                tickcolor="#e5e7eb",
+                zeroline=False,
+                title_font=dict(size=12, color="#6b7280"),
+            ),
+            margin=dict(t=12, b=40, l=60, r=16),
+            height=260,
+            showlegend=False,
         )
         st.plotly_chart(fig_trend, use_container_width=True)
 
-    # ── 차트 행 2: Top IP + 프로토콜별 패킷 크기 ─────────────────
-    col_chart3, col_chart4 = st.columns(2)
+        # ── 패킷 테이블 필터 ─────────────────────────────────────────
+        st.markdown('<p style="font-size:12px;font-weight:600;color:#374151;letter-spacing:0.06em;text-transform:uppercase;margin:20px 0 8px;">패킷 테이블</p>', unsafe_allow_html=True)
+        col_f1, col_f2, col_f3 = st.columns([2, 2, 1])
+        with col_f1:
+            proto_filter = st.multiselect(
+                "프로토콜 필터",
+                options=sorted(df_packets["protocol"].unique()),
+                default=[],
+                placeholder="프로토콜 선택",
+            )
+        with col_f2:
+            src_filter = st.text_input(
+                "출발지 IP 검색",
+                placeholder="예: 192.168.1.1",
+            )
+        with col_f3:
+            max_rows = st.number_input(
+                "최대 행",
+                min_value=50, max_value=5000, value=200, step=50,
+            )
 
-    with col_chart3:
-        st.subheader("🏆 출발지 IP 상위 10")
-        top_src = df_packets["src"].value_counts().head(10).reset_index()
-        top_src.columns = ["ip", "count"]
+        df_view = df_packets.copy()
+        if proto_filter:
+            df_view = df_view[df_view["protocol"].isin(proto_filter)]
+        if src_filter.strip():
+            df_view = df_view[df_view["src"].str.contains(src_filter.strip(), na=False)]
 
-        fig_src = px.bar(
-            top_src,
-            x="count",
-            y="ip",
-            orientation="h",
-            color="count",
-            color_continuous_scale=[[0,"#1c2130"],[0.4,"#4f52c9"],[1,"#6366f1"]],
-            labels={"count": "패킷 수", "ip": "IP 주소"},
+        st.dataframe(
+            df_view.head(max_rows),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "no":       st.column_config.NumberColumn("No.", width=60),
+                "time":     st.column_config.TextColumn("시간", width=110),
+                "src":      st.column_config.TextColumn("출발지"),
+                "dst":      st.column_config.TextColumn("목적지"),
+                "protocol": st.column_config.TextColumn("프로토콜", width=100),
+                "length":   st.column_config.NumberColumn("크기(B)", width=80),
+                "info":     st.column_config.TextColumn("정보"),
+            },
+            height=400,
         )
-        fig_src.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#a4abbb",
-            font_family="Inter, system-ui",
-            xaxis=dict(gridcolor="#232838", color="#6b7387", zeroline=False),
-            yaxis=dict(gridcolor="#232838", color="#6b7387", autorange="reversed"),
-            coloraxis_showscale=False,
-            margin=dict(t=10, b=10, l=0, r=0),
-            height=300,
-        )
-        st.plotly_chart(fig_src, use_container_width=True)
-
-    with col_chart4:
-        st.subheader("📦 프로토콜별 평균 패킷 크기")
-        proto_size = (
-            df_packets.groupby("protocol")["length"]
-            .mean()
-            .round(1)
-            .reset_index()
-            .sort_values("length", ascending=False)
-            .head(10)
-        )
-        fig_size = px.bar(
-            proto_size,
-            x="protocol",
-            y="length",
-            color="length",
-            color_continuous_scale=[[0,"#0e1929"],[0.4,"#0e8fa0"],[1,"#22d3ee"]],
-            labels={"length": "평균 크기 (bytes)", "protocol": "프로토콜"},
-        )
-        fig_size.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#a4abbb",
-            font_family="Inter, system-ui",
-            xaxis=dict(gridcolor="#232838", color="#6b7387", zeroline=False),
-            yaxis=dict(gridcolor="#232838", color="#6b7387", zeroline=False),
-            coloraxis_showscale=False,
-            margin=dict(t=10, b=10, l=0, r=0),
-            height=300,
-        )
-        st.plotly_chart(fig_size, use_container_width=True)
-
-    # ── 패킷 테이블 ───────────────────────────────────────────────
-    st.subheader("📋 패킷 상세 테이블")
-    st.markdown('<div class="filter-bar"><p class="filter-bar-title">🔎 필터</p>', unsafe_allow_html=True)
-    col_f1, col_f2, col_f3 = st.columns([2, 2, 1])
-    with col_f1:
-        proto_filter = st.multiselect(
-            "프로토콜",
-            options=sorted(df_packets["protocol"].unique()),
-            default=[],
-            label_visibility="collapsed",
-            placeholder="프로토콜 선택…",
-        )
-    with col_f2:
-        src_filter = st.text_input(
-            "출발지 IP",
-            placeholder="출발지 IP 검색 (예: 192.168.1.1)",
-            label_visibility="collapsed",
-        )
-    with col_f3:
-        max_rows = st.number_input(
-            "최대 행",
-            min_value=50, max_value=5000, value=200, step=50,
-            label_visibility="collapsed",
-        )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    df_view = df_packets.copy()
-    if proto_filter:
-        df_view = df_view[df_view["protocol"].isin(proto_filter)]
-    if src_filter.strip():
-        df_view = df_view[df_view["src"].str.contains(src_filter.strip(), na=False)]
-
-    st.dataframe(
-        df_view.head(max_rows),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "no":            st.column_config.NumberColumn("No.", width=60),
-            "time":          st.column_config.TextColumn("시간", width=110),
-            "src":           st.column_config.TextColumn("출발지"),
-            "dst":           st.column_config.TextColumn("목적지"),
-            "protocol":      st.column_config.TextColumn("프로토콜", width=100),
-            "length":        st.column_config.NumberColumn("크기(B)", width=80),
-            "info":          st.column_config.TextColumn("정보"),
-        },
-        height=400,
-    )
-    st.caption(f"전체 {total_packets:,}개 중 {min(len(df_view), max_rows):,}개 표시")
+        st.caption(f"전체 {total_packets:,}개 중 {min(len(df_view), max_rows):,}개 표시")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  탭 2: AI 패킷 분석가 (챗봇)
-# ─────────────────────────────────────────────────────────────────────────────
-with tab_ai:
+# =============================================================================
+# 탭 2: 패킷 분석기 (AI 챗봇)
+# =============================================================================
+with tab_chat:
 
-    # ── API 키 미설정 경고 ────────────────────────────────────────
+    # ── API 미설정 안내 ──────────────────────────────────────────────
     if not st.session_state["api_configured"]:
-        st.markdown("""
-        <div class="alert-box">
-        ⚠ <strong>API 키가 설정되지 않았습니다.</strong><br>
-        사이드바의 [🔑 API 키 설정] 버튼을 클릭하여 LLM을 선택하고 API 키를 입력하세요.
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            '<p style="font-size:14px;color:#d97706;margin-bottom:16px;">'
+            'API 키가 설정되지 않았습니다. [API 설정] 탭에서 LLM을 선택하고 API 키를 입력하세요.'
+            '</p>',
+            unsafe_allow_html=True
+        )
 
-    # ── AI 분석 개요 ──────────────────────────────────────────────
-    with st.expander("🧠 AI 분석가 소개 및 사용법", expanded=False):
-        st.markdown("""
-        **PacketAI**는 업로드된 pcap 파일을 바탕으로 3가지 전문 영역을 분석합니다:
-
-        | 영역 | 주요 분석 내용 |
-        |------|--------------|
-        | 🔧 네트워크 문제 해결 | 패킷 손실, 레이턴시, ARP 이상 등 |
-        | 🛡 보안/악성코드 분석 | 포트 스캔, DDoS, C&C 통신 탐지 |
-        | 💻 개발/디버깅 | TCP Handshake 오류, API 세션 분석 |
-
-        **빠른 시작 질문 예시:**
-        - "이 pcap에서 비정상적인 트래픽 패턴이 있나요?"
-        - "SYN Flood 공격 징후가 보이나요?"
-        - "가장 많은 트래픽을 발생시킨 IP는 어디인가요?"
-        - "TCP 재전송이 많이 발생한 구간이 있나요?"
-        """)
-
-    # ── 빠른 질문 버튼 ────────────────────────────────────────────
-    st.markdown("**⚡ 빠른 질문**")
-    quick_cols = st.columns(2)
+    # ── 빠른 질문 버튼 ───────────────────────────────────────────────
+    st.markdown('<p style="font-size:12px;font-weight:600;color:#374151;letter-spacing:0.06em;text-transform:uppercase;margin:0 0 8px;">빠른 질문</p>', unsafe_allow_html=True)
+    quick_col1, quick_col2 = st.columns(2)
     quick_questions = [
-        "📊 트래픽 요약 및 이상 징후 분석",
-        "🛡 보안 위협 및 공격 패턴 탐지",
-        "🔧 네트워크 성능 문제 구간 진단",
-        "💻 TCP 세션 오류 및 재전송 분석",
+        "트래픽 전체 요약",
+        "보안 위협 탐지",
+        "성능 문제 진단",
+        "TCP 오류 분석",
     ]
     quick_triggered = None
-    for col, q in zip(quick_cols, quick_questions):
-        with col:
-            if st.button(q, use_container_width=True):
-                quick_triggered = q.split(" ", 1)[1]  # 이모지 제거
+    with quick_col1:
+        if st.button(quick_questions[0], use_container_width=True):
+            quick_triggered = quick_questions[0]
+        if st.button(quick_questions[2], use_container_width=True):
+            quick_triggered = quick_questions[2]
+    with quick_col2:
+        if st.button(quick_questions[1], use_container_width=True):
+            quick_triggered = quick_questions[1]
+        if st.button(quick_questions[3], use_container_width=True):
+            quick_triggered = quick_questions[3]
 
-    # ── 채팅 이력 표시 ────────────────────────────────────────────
-    st.markdown("---")
-    chat_container = st.container(height=450)
+    st.markdown('<hr style="margin:16px 0;">', unsafe_allow_html=True)
 
+    # ── 채팅 이력 표시 ───────────────────────────────────────────────
+    chat_container = st.container(height=440)
     with chat_container:
         if not st.session_state["chat_history"]:
             st.markdown("""
-            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-                        padding:52px 20px;gap:14px;text-align:center;">
-              <div style="width:52px;height:52px;border-radius:14px;
-                          background:linear-gradient(135deg,#6366f1,#22d3ee);
-                          display:flex;align-items:center;justify-content:center;
-                          font-size:1.4rem;box-shadow:0 4px 20px rgba(99,102,241,0.35);">
-                🤖
+            <div style="display:flex;flex-direction:column;align-items:center;
+                        justify-content:center;padding:60px 20px;text-align:center;">
+              <div style="width:48px;height:48px;border-radius:12px;
+                          background:#eff6ff;display:flex;align-items:center;
+                          justify-content:center;margin-bottom:16px;">
+                <svg width="24" height="24" fill="none" viewBox="0 0 24 24"
+                     style="color:#2563eb;">
+                  <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8
+                           a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3
+                           13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                        stroke="#2563eb" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round"/>
+                </svg>
               </div>
-              <p style="color:var(--text);font-weight:700;font-size:.95rem;margin:0;letter-spacing:-.01em;">
-                PacketAI 분석가
+              <p style="font-size:0.95rem;font-weight:600;color:#111827;margin:0 0 8px;">
+                패킷 분석기
               </p>
-              <p style="color:var(--text-mute);font-size:.82rem;margin:0;max-width:280px;line-height:1.65;">
-                네트워크 보안 분석을 시작하려면 빠른 질문을 클릭하거나 직접 입력하세요.
+              <p style="font-size:0.85rem;color:#6b7280;margin:0;
+                        max-width:280px;line-height:1.65;">
+                위의 빠른 질문을 클릭하거나 직접 질문을 입력하여 AI 보안 분석을 시작하세요.
               </p>
             </div>
             """, unsafe_allow_html=True)
@@ -1441,40 +1123,120 @@ with tab_ai:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
 
-    # ── 사용자 입력 처리 ──────────────────────────────────────────
+    # ── 채팅 입력 ────────────────────────────────────────────────────
     user_input = st.chat_input(
         "네트워크 보안 분석을 요청하세요...",
         disabled=not st.session_state["api_configured"],
     )
 
-    # 빠른 질문 버튼 클릭 시 사용자 입력으로 처리
     if quick_triggered:
         user_input = quick_triggered
 
     if user_input:
-        # 사용자 메시지 저장 및 표시
-        st.session_state["chat_history"].append(
-            {"role": "user", "content": user_input}
-        )
+        st.session_state["chat_history"].append({"role": "user", "content": user_input})
 
-        # ── 패킷 컨텍스트 포함 메시지 목록 구성 ──────────────────
+        df_packets = st.session_state["df_packets"]
         packet_context = build_packet_context(df_packets)
         system_prompt  = build_system_prompt(packet_context)
 
-        # API 전송용 메시지 (시스템 + 이력 전체)
         api_messages = [{"role": "system", "content": system_prompt}]
-        # 토큰 절약: 최근 10개 대화만 포함
         recent_history = st.session_state["chat_history"][-10:]
         api_messages.extend(recent_history)
 
-        # ── AI 호출 ───────────────────────────────────────────────
-        with st.spinner("🤖 PacketAI 분석 중..."):
+        with st.spinner("분석 중..."):
             response = call_llm(api_messages)
 
-        # 응답 저장
-        st.session_state["chat_history"].append(
-            {"role": "assistant", "content": response}
+        st.session_state["chat_history"].append({"role": "assistant", "content": response})
+        st.rerun()
+
+
+# =============================================================================
+# 탭 3: API 설정
+# =============================================================================
+with tab_api:
+
+    # ── 현재 상태 ────────────────────────────────────────────────────
+    if st.session_state["api_configured"]:
+        provider_label = {
+            "openai":    "OpenAI GPT-4o-mini",
+            "anthropic": "Claude Anthropic",
+            "custom":    "커스텀 API",
+        }.get(st.session_state["llm_provider"], "알 수 없음")
+        st.markdown(
+            f'<p style="font-size:14px;color:#16a34a;margin-bottom:20px;">'
+            f'{provider_label} — 연결됨</p>',
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            '<p style="font-size:14px;color:#6b7280;margin-bottom:20px;">'
+            'API 키가 설정되지 않았습니다.</p>',
+            unsafe_allow_html=True
         )
 
-        # 화면 갱신 (새 메시지 표시)
-        st.rerun()
+    # ── 설정 폼 ──────────────────────────────────────────────────────
+    provider_options = ["OpenAI GPT-4o-mini", "Claude Anthropic", "커스텀 API"]
+    provider_map = {
+        "OpenAI GPT-4o-mini": "openai",
+        "Claude Anthropic":   "anthropic",
+        "커스텀 API":          "custom",
+    }
+    provider_reverse_map = {v: k for k, v in provider_map.items()}
+
+    current_provider_label = provider_reverse_map.get(
+        st.session_state["llm_provider"], "OpenAI GPT-4o-mini"
+    )
+
+    selected_label = st.selectbox(
+        "AI 모델",
+        options=provider_options,
+        index=provider_options.index(current_provider_label),
+    )
+    selected_provider = provider_map[selected_label]
+
+    api_key_input = st.text_input(
+        "API Key",
+        value=st.session_state["api_key"],
+        type="password",
+        placeholder={
+            "openai":    "sk-...",
+            "anthropic": "sk-ant-...",
+            "custom":    "Bearer 토큰 또는 API 키",
+        }.get(selected_provider, ""),
+    )
+
+    custom_base_url = st.session_state.get("custom_base_url", "")
+    custom_model    = st.session_state.get("custom_model", "gpt-4o-mini")
+
+    if selected_provider == "custom":
+        custom_base_url = st.text_input(
+            "Base URL",
+            value=custom_base_url,
+            placeholder="https://api.example.com/v1",
+        )
+        custom_model = st.text_input(
+            "모델 이름",
+            value=custom_model,
+            placeholder="gpt-4o-mini",
+        )
+
+    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+
+    col_save, col_reset = st.columns([1, 1])
+    with col_save:
+        if st.button("저장", type="primary", use_container_width=True):
+            if not api_key_input.strip():
+                st.error("API 키를 입력하세요.")
+            else:
+                st.session_state["llm_provider"]    = selected_provider
+                st.session_state["api_key"]         = api_key_input.strip()
+                st.session_state["custom_base_url"] = custom_base_url.strip() if selected_provider == "custom" else ""
+                st.session_state["custom_model"]    = custom_model.strip() if selected_provider == "custom" else "gpt-4o-mini"
+                st.session_state["api_configured"]  = True
+                st.success("저장되었습니다.")
+                st.rerun()
+    with col_reset:
+        if st.button("초기화", use_container_width=True):
+            st.session_state["api_key"]        = ""
+            st.session_state["api_configured"] = False
+            st.rerun()
