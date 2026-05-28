@@ -176,17 +176,41 @@ button[data-testid="baseButton-headerNoPadding"] {
     border-color: #1d4ed8 !important;
 }
 
-/* ── 패스워드 입력 필드 (eye icon) ──────────────────────────────── */
+/* ── 패스워드 / 텍스트 입력 — 글자색 강제 ───────────────────── */
+[data-testid="stTextInput"] input,
+[data-testid="stTextInput"] input[type="password"],
+[data-testid="stTextInput"] input[type="text"] {
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+    caret-color: #111827 !important;
+    background: #ffffff !important;
+}
+[data-testid="stTextInput"] input::placeholder {
+    -webkit-text-fill-color: #9ca3af !important;
+    color: #9ca3af !important;
+}
+/* eye 아이콘 토글 버튼 — 배경·테두리 완전 제거 */
 [data-testid="stTextInput"] button,
-[data-testid="stTextInput"] > div > div button {
+[data-testid="stTextInput"] > div > div button,
+[data-testid="stTextInput"] [data-baseweb="input"] button,
+[data-testid="stTextInput"] [data-baseweb="base-input"] button {
     background: transparent !important;
     border: none !important;
-    color: #9ca3af !important;
+    color: #6b7280 !important;
     box-shadow: none !important;
+    min-height: unset !important;
+    padding: 0 8px !important;
 }
 [data-testid="stTextInput"] button:hover {
     color: #374151 !important;
     background: transparent !important;
+}
+/* input wrapper 배경 통일 */
+[data-testid="stTextInput"] [data-baseweb="input"],
+[data-testid="stTextInput"] [data-baseweb="base-input"],
+[data-testid="stTextInput"] [data-baseweb="base-input"] > div {
+    background: #ffffff !important;
+    border: none !important;
 }
 
 /* ── 채팅 입력 고정 컨테이너 ────────────────────────────────────── */
@@ -201,21 +225,84 @@ button[data-testid="baseButton-headerNoPadding"] {
     background: #f9fafb !important;
 }
 
-/* ── 채팅 메시지 (Claude 스타일) ───────────────────────────────── */
+/* ── 채팅 메시지 (Claude.ai 스타일) ───────────────────────────── */
 [data-testid="stChatMessage"] {
     background: transparent !important;
     border: none !important;
-    padding: 16px 0 !important;
+    padding: 20px 0 !important;
     border-bottom: 1px solid #f3f4f6 !important;
     border-radius: 0 !important;
+    max-width: 820px;
 }
-[data-testid="stChatMessage"]:last-child {
-    border-bottom: none !important;
-}
-[data-testid="stChatMessage"] p {
+[data-testid="stChatMessage"]:last-child { border-bottom: none !important; }
+
+/* 메시지 공통 텍스트 */
+[data-testid="stChatMessage"] p,
+[data-testid="stChatMessage"] li,
+[data-testid="stChatMessage"] td {
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
     font-size: 15px !important;
-    line-height: 1.75 !important;
+    line-height: 1.8 !important;
     color: #1f2937 !important;
+    letter-spacing: -0.01em;
+}
+/* 코드 블록 */
+[data-testid="stChatMessage"] code {
+    font-size: 13.5px !important;
+    background: #f3f4f6 !important;
+    color: #1f2937 !important;
+    padding: 2px 5px !important;
+    border-radius: 4px !important;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace !important;
+}
+[data-testid="stChatMessage"] pre {
+    background: #f8fafc !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    padding: 14px 16px !important;
+    overflow-x: auto;
+}
+[data-testid="stChatMessage"] pre code {
+    background: transparent !important;
+    padding: 0 !important;
+    font-size: 13px !important;
+    line-height: 1.65 !important;
+}
+/* 헤딩 */
+[data-testid="stChatMessage"] h1,
+[data-testid="stChatMessage"] h2,
+[data-testid="stChatMessage"] h3 {
+    font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif !important;
+    color: #111827 !important;
+    font-weight: 600 !important;
+    margin: 18px 0 8px !important;
+}
+/* 목록 */
+[data-testid="stChatMessage"] ul,
+[data-testid="stChatMessage"] ol {
+    padding-left: 20px !important;
+    margin: 8px 0 !important;
+}
+[data-testid="stChatMessage"] li { margin-bottom: 4px !important; }
+/* 인용 */
+[data-testid="stChatMessage"] blockquote {
+    border-left: 3px solid #e5e7eb !important;
+    margin: 8px 0 !important;
+    padding: 4px 12px !important;
+    color: #6b7280 !important;
+}
+/* 굵은 글씨 */
+[data-testid="stChatMessage"] strong {
+    color: #111827 !important;
+    font-weight: 600 !important;
+}
+/* user 메시지 아바타 배지 */
+[data-testid="stChatMessage"][data-testid*="user"] {
+    background: #f9fafb !important;
+    border-radius: 10px !important;
+    padding: 16px 20px !important;
+    border-bottom: none !important;
+    margin-bottom: 8px !important;
 }
 /* Chat input (all states including disabled) */
 [data-testid="stChatInput"],
@@ -710,52 +797,57 @@ def build_packet_context(df: pd.DataFrame) -> str:
 # =============================================================================
 # LLM API 호출 함수
 # =============================================================================
-def call_llm(messages: list) -> str:
+def stream_llm(messages: list):
+    """스트리밍 LLM 호출 — 청크를 yield하는 제너레이터."""
     provider = st.session_state["llm_provider"]
     api_key  = st.session_state["api_key"]
 
     if not api_key:
-        return "API 키가 설정되지 않았습니다. [API 설정] 탭에서 키를 입력하세요."
+        yield "API 키가 설정되지 않았습니다. [API 설정] 탭에서 키를 입력하세요."
+        return
 
     if provider == "openai":
         try:
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
-            resp = client.chat.completions.create(
+            stream = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
                 max_tokens=2000,
                 temperature=0.3,
+                stream=True,
             )
-            return resp.choices[0].message.content
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield delta
         except ImportError:
-            return "openai 패키지 미설치: `pip install openai`"
+            yield "openai 패키지 미설치: `pip install openai`"
         except Exception as e:
-            return f"OpenAI 오류: {e}"
+            yield f"OpenAI 오류: {e}"
 
     elif provider == "anthropic":
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=api_key)
-            system_msg = ""
-            chat_msgs = []
+            system_msg, chat_msgs = "", []
             for m in messages:
                 if m["role"] == "system":
                     system_msg = m["content"]
                 else:
                     chat_msgs.append({"role": m["role"], "content": m["content"]})
-
-            resp = client.messages.create(
+            with client.messages.stream(
                 model="claude-opus-4-5",
                 max_tokens=2000,
-                system=system_msg if system_msg else "You are a helpful assistant.",
+                system=system_msg or "You are a helpful assistant.",
                 messages=chat_msgs,
-            )
-            return resp.content[0].text
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
         except ImportError:
-            return "anthropic 패키지 미설치: `pip install anthropic`"
+            yield "anthropic 패키지 미설치: `pip install anthropic`"
         except Exception as e:
-            return f"Claude 오류: {e}"
+            yield f"Claude 오류: {e}"
 
     elif provider == "custom":
         try:
@@ -763,55 +855,61 @@ def call_llm(messages: list) -> str:
             base_url = st.session_state.get("custom_base_url", "").strip()
             model    = st.session_state.get("custom_model", "gpt-4o-mini").strip()
             if not base_url:
-                return "커스텀 API의 Base URL을 설정하세요."
+                yield "커스텀 API의 Base URL을 설정하세요."
+                return
             client = OpenAI(api_key=api_key, base_url=base_url)
-            resp = client.chat.completions.create(
+            stream = client.chat.completions.create(
                 model=model,
                 messages=messages,
                 max_tokens=2000,
                 temperature=0.3,
+                stream=True,
             )
-            return resp.choices[0].message.content
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield delta
         except ImportError:
-            return "openai 패키지 미설치: `pip install openai`"
+            yield "openai 패키지 미설치: `pip install openai`"
         except Exception as e:
-            return f"커스텀 API 오류: {e}"
-
-    return "지원하지 않는 LLM 공급자입니다."
+            yield f"커스텀 API 오류: {e}"
+    else:
+        yield "지원하지 않는 LLM 공급자입니다."
 
 
 # =============================================================================
 # 시스템 프롬프트 생성
 # =============================================================================
 def build_system_prompt(packet_context: str) -> str:
-    return f"""당신은 네트워크 보안 및 패킷 분석 전문가 AI 'PacketAI'입니다.
-사용자가 업로드한 pcap 파일을 분석하여 아래 3가지 영역에서 전문적인 인사이트를 제공하세요.
+    return f"""당신은 KDN(한국전력공사 자회사) 보안관제센터 전속 AI 분석 어시스턴트 'KDN-SecAI'입니다.
 
-전문 분석 영역 1: 네트워크 문제 해결
-  - 통신 장애의 원인 파악 (라우팅 문제, ARP 브로드캐스트 폭주 등)
-  - 패킷 손실(Packet Loss) 징후 탐지 (TCP 재전송, 중복 ACK 등)
-  - 레이턴시(지연) 유발 구간 진단 (RTT 측정, TCP Window 크기 분석)
+[역할]
+업로드된 네트워크 패킷(pcap) 데이터를 정밀 분석하여 보안 위협·성능 문제·통신 오류를 진단하고,
+현장 보안 담당자가 즉시 활용할 수 있는 실무적 조치 방안을 제시합니다.
 
-전문 분석 영역 2: 보안 및 악성코드 분석
-  - 비정상적인 트래픽 패턴 탐지 (포트 스캔, DDoS, SYN Flood)
-  - 외부 해킹 시도 및 침투 흔적 분석
-  - 악성코드 C&C(Command & Control) 서버 통신 내역 탐지 및 경고
-  - DNS Tunneling, 데이터 유출(Data Exfiltration) 패턴 확인
+[행동 지침]
+1. 답변은 항상 한국어로 작성하되, 기술 용어는 반드시 영문 원어를 병기합니다.
+   예: SYN Flood, ARP Spoofing, Lateral Movement, C2(Command & Control)
+2. 분석 결과는 실제 데이터(IP 주소, 포트 번호, 패킷 수, 비율)를 근거로 제시합니다.
+3. 이상 징후 발견 시 위험도를 아래 4단계로 명시합니다.
+   - 정보(INFO): 확인 권장 사항
+   - 낮음(LOW): 모니터링 필요
+   - 중간(MEDIUM): 조기 대응 권고
+   - 높음(HIGH)/긴급(CRITICAL): 즉시 조치 필요
+4. 답변 구조: **요약** → **상세 분석** → **조치 권고** 순서를 따릅니다.
+5. 불확실한 사항은 "추가 확인 필요"로 표시하고 확인 방법을 안내합니다.
+6. 인사말·감탄사 없이 분석 내용을 바로 시작합니다.
 
-전문 분석 영역 3: 개발 및 디버깅
-  - 네트워크 프로토콜 개발 검증 (요청/응답 패턴 확인)
-  - API 통신 세션 오류 분석 (TCP 3-Way Handshake 실패, TLS 협상 오류)
-  - HTTP/HTTPS 통신 이상 탐지 (비정상 상태 코드, 응답 지연 등)
+[분석 범위]
+• 보안 위협: 포트 스캔(Port Scan), DDoS/DoS, SYN Flood, UDP Flood, ARP Spoofing,
+  DNS Tunneling, 데이터 유출(Data Exfiltration), C2 통신, 비정상 프로토콜
+• 네트워크 성능: 패킷 손실(Packet Loss), 지연(Latency), TCP 재전송(Retransmission),
+  TCP Window Size 이상, 대역폭 급증
+• 통신 오류: TCP 3-Way Handshake 실패, TLS/SSL 협상 오류, HTTP 4xx/5xx 이상,
+  DNS 쿼리 실패, ICMP 이상
 
-답변 원칙:
-1. 한국어로 답변하되, 기술 용어는 영문 원어를 병기하세요.
-2. 구체적인 IP 주소, 포트 번호, 패킷 수 등 데이터 기반 근거를 제시하세요.
-3. 발견된 이상 징후는 위험도(낮음/중간/높음)를 표시하세요.
-4. 대응 방안 또는 추가 확인이 필요한 사항을 제안하세요.
-
-현재 분석 중인 패킷 데이터 컨텍스트:
-{packet_context}
-"""
+[현재 분석 대상 패킷 데이터]
+{packet_context}"""
 
 
 # =============================================================================
@@ -855,7 +953,7 @@ st.markdown(f"""
 # =============================================================================
 # 메인 탭 네비게이션
 # =============================================================================
-tab_dash, tab_chat, tab_api = st.tabs(["대시보드", "패킷 분석기", "API 설정"])
+tab_dash, tab_chat, tab_api = st.tabs(["대시보드", "AI 보안 분석", "API 설정"])
 
 
 # =============================================================================
@@ -917,7 +1015,7 @@ with tab_dash:
           <div class="onboard-card">
             <div class="onboard-step">3</div>
             <h4>AI 보안 분석</h4>
-            <p>패킷 분석기 탭에서 AI에게 보안 위협, 성능 이슈, 통신 오류를 질문하세요.</p>
+            <p>AI 보안 분석 탭에서 보안 위협, 성능 이슈, 통신 오류를 AI에게 질문하세요.</p>
           </div>
         </div>
         <p style="font-size:0.8rem;color:#9ca3af;margin-top:20px;text-align:center;">
@@ -1054,7 +1152,7 @@ with tab_dash:
 
 
 # =============================================================================
-# 탭 2: 패킷 분석기 (AI 챗봇)
+# 탭 2: AI 보안 분석 (스트리밍 챗봇)
 # =============================================================================
 with tab_chat:
 
@@ -1067,86 +1165,91 @@ with tab_chat:
             unsafe_allow_html=True
         )
 
-    # ── 빠른 질문 버튼 ───────────────────────────────────────────────
-    st.markdown('<p style="font-size:12px;font-weight:600;color:#374151;letter-spacing:0.06em;text-transform:uppercase;margin:0 0 8px;">빠른 질문</p>', unsafe_allow_html=True)
-    quick_col1, quick_col2 = st.columns(2)
-    quick_questions = [
-        "트래픽 전체 요약",
-        "보안 위협 탐지",
-        "성능 문제 진단",
-        "TCP 오류 분석",
-    ]
-    quick_triggered = None
-    with quick_col1:
-        if st.button(quick_questions[0], use_container_width=True):
-            quick_triggered = quick_questions[0]
-        if st.button(quick_questions[2], use_container_width=True):
-            quick_triggered = quick_questions[2]
-    with quick_col2:
-        if st.button(quick_questions[1], use_container_width=True):
-            quick_triggered = quick_questions[1]
-        if st.button(quick_questions[3], use_container_width=True):
-            quick_triggered = quick_questions[3]
+    # ── 채팅 이력 표시 (스트리밍 결과 포함) ─────────────────────────
+    if not st.session_state["chat_history"]:
+        st.markdown("""
+        <div style="display:flex;flex-direction:column;align-items:center;
+                    justify-content:center;padding:60px 20px;text-align:center;">
+          <div style="width:48px;height:48px;border-radius:12px;
+                      background:#eff6ff;display:flex;align-items:center;
+                      justify-content:center;margin-bottom:16px;">
+            <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
+              <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8
+                       a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3
+                       13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                    stroke="#2563eb" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <p style="font-size:0.95rem;font-weight:600;color:#111827;margin:0 0 8px;">
+            AI 보안 분석
+          </p>
+          <p style="font-size:0.85rem;color:#6b7280;margin:0;
+                    max-width:300px;line-height:1.7;">
+            아래 빠른 질문을 클릭하거나 직접 입력하여 네트워크 보안 분석을 시작하세요.
+          </p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        for msg in st.session_state["chat_history"]:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-    st.markdown('<hr style="margin:16px 0;">', unsafe_allow_html=True)
-
-    # ── 채팅 이력 표시 ───────────────────────────────────────────────
-    chat_container = st.container(height=440)
-    with chat_container:
-        if not st.session_state["chat_history"]:
-            st.markdown("""
-            <div style="display:flex;flex-direction:column;align-items:center;
-                        justify-content:center;padding:60px 20px;text-align:center;">
-              <div style="width:48px;height:48px;border-radius:12px;
-                          background:#eff6ff;display:flex;align-items:center;
-                          justify-content:center;margin-bottom:16px;">
-                <svg width="24" height="24" fill="none" viewBox="0 0 24 24"
-                     style="color:#2563eb;">
-                  <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8
-                           a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3
-                           13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                        stroke="#2563eb" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round"/>
-                </svg>
-              </div>
-              <p style="font-size:0.95rem;font-weight:600;color:#111827;margin:0 0 8px;">
-                패킷 분석기
-              </p>
-              <p style="font-size:0.85rem;color:#6b7280;margin:0;
-                        max-width:280px;line-height:1.65;">
-                위의 빠른 질문을 클릭하거나 직접 질문을 입력하여 AI 보안 분석을 시작하세요.
-              </p>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            for msg in st.session_state["chat_history"]:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
-
-    # ── 채팅 입력 ────────────────────────────────────────────────────
+    # ── 채팅 입력 (항상 하단 고정) ──────────────────────────────────
     user_input = st.chat_input(
         "네트워크 보안 분석을 요청하세요...",
         disabled=not st.session_state["api_configured"],
     )
 
-    if quick_triggered:
-        user_input = quick_triggered
+    # ── 빠른 질문 버튼 (채팅 입력 바로 위) ─────────────────────────
+    quick_questions = [
+        "업로드된 pcap의 트래픽을 전체 요약해줘",
+        "보안 위협 및 공격 패턴을 탐지해줘",
+        "네트워크 성능 문제 구간을 진단해줘",
+        "TCP 세션 오류 및 재전송을 분석해줘",
+    ]
+    quick_triggered = None
+    st.markdown(
+        '<p style="font-size:11px;font-weight:600;color:#9ca3af;'
+        'letter-spacing:0.06em;text-transform:uppercase;margin:12px 0 6px;">빠른 질문</p>',
+        unsafe_allow_html=True
+    )
+    qc1, qc2 = st.columns(2)
+    with qc1:
+        if st.button(quick_questions[0], use_container_width=True, key="q0"):
+            quick_triggered = quick_questions[0]
+        if st.button(quick_questions[2], use_container_width=True, key="q2"):
+            quick_triggered = quick_questions[2]
+    with qc2:
+        if st.button(quick_questions[1], use_container_width=True, key="q1"):
+            quick_triggered = quick_questions[1]
+        if st.button(quick_questions[3], use_container_width=True, key="q3"):
+            quick_triggered = quick_questions[3]
 
-    if user_input:
-        st.session_state["chat_history"].append({"role": "user", "content": user_input})
+    # ── 질문 처리 & 스트리밍 응답 ───────────────────────────────────
+    final_input = quick_triggered or user_input
 
-        df_packets = st.session_state["df_packets"]
-        packet_context = build_packet_context(df_packets)
+    if final_input:
+        st.session_state["chat_history"].append({"role": "user", "content": final_input})
+
+        df_packets_cur = st.session_state["df_packets"]
+        packet_context = build_packet_context(df_packets_cur)
         system_prompt  = build_system_prompt(packet_context)
 
         api_messages = [{"role": "system", "content": system_prompt}]
-        recent_history = st.session_state["chat_history"][-10:]
-        api_messages.extend(recent_history)
+        api_messages.extend(st.session_state["chat_history"][-10:])
 
-        with st.spinner("분석 중..."):
-            response = call_llm(api_messages)
+        # 사용자 메시지 즉시 렌더링
+        with st.chat_message("user"):
+            st.markdown(final_input)
 
-        st.session_state["chat_history"].append({"role": "assistant", "content": response})
+        # 스트리밍 응답
+        with st.chat_message("assistant"):
+            full_response = st.write_stream(stream_llm(api_messages))
+
+        st.session_state["chat_history"].append(
+            {"role": "assistant", "content": full_response}
+        )
         st.rerun()
 
 
