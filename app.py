@@ -521,8 +521,22 @@ hr { border-color: #e5e7eb !important; }
 }
 
 /* ── 스크롤바 ───────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f9fafb; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+/* ── 채팅 출력 컨테이너 (st.container height) ────────────────── */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border: none !important;
+    background: transparent !important;
+}
+/* 고정 높이 컨테이너 내부 스크롤 영역 */
+[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlockBorderWrapper"] > div {
+    overflow-y: auto !important;
+    scrollbar-width: thin !important;
+    scrollbar-color: #d1d5db #f9fafb !important;
+}
 
 /* ── 헤딩 공통 ─────────────────────────────────────────────────── */
 h1, h2, h3 {
@@ -1173,49 +1187,46 @@ with tab_chat:
     # ── API 미설정 안내 ──────────────────────────────────────────────
     if not st.session_state["api_configured"]:
         st.markdown(
-            '<p style="font-size:14px;color:#d97706;margin-bottom:16px;">'
+            '<p style="font-size:14px;color:#d97706;margin:0 0 10px;">'
             'API 키가 설정되지 않았습니다. [API 설정] 탭에서 LLM을 선택하고 API 키를 입력하세요.'
             '</p>',
             unsafe_allow_html=True
         )
 
-    # ── 채팅 이력 표시 (스트리밍 결과 포함) ─────────────────────────
-    if not st.session_state["chat_history"]:
-        st.markdown("""
-        <div style="display:flex;flex-direction:column;align-items:center;
-                    justify-content:center;padding:60px 20px;text-align:center;">
-          <div style="width:48px;height:48px;border-radius:12px;
-                      background:#eff6ff;display:flex;align-items:center;
-                      justify-content:center;margin-bottom:16px;">
-            <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
-              <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8
-                       a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3
-                       13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    stroke="#2563eb" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <p style="font-size:0.95rem;font-weight:600;color:#111827;margin:0 0 8px;">
-            AI 보안 분석
-          </p>
-          <p style="font-size:0.85rem;color:#6b7280;margin:0;
-                    max-width:300px;line-height:1.7;">
-            아래 빠른 질문을 클릭하거나 직접 입력하여 네트워크 보안 분석을 시작하세요.
-          </p>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        for msg in st.session_state["chat_history"]:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+    # ── 출력창: 고정 높이 + 스크롤바 ────────────────────────────────
+    msg_area = st.container(height=480, border=False)
 
-    # ── 채팅 입력 (항상 하단 고정) ──────────────────────────────────
-    user_input = st.chat_input(
-        "네트워크 보안 분석을 요청하세요...",
-        disabled=not st.session_state["api_configured"],
-    )
+    with msg_area:
+        if not st.session_state["chat_history"]:
+            st.markdown("""
+            <div style="display:flex;flex-direction:column;align-items:center;
+                        justify-content:center;height:380px;text-align:center;">
+              <div style="width:48px;height:48px;border-radius:12px;
+                          background:#eff6ff;display:flex;align-items:center;
+                          justify-content:center;margin-bottom:16px;">
+                <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
+                  <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8
+                           a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3
+                           13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                        stroke="#2563eb" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <p style="font-size:0.95rem;font-weight:600;color:#111827;margin:0 0 8px;">
+                AI 보안 분석
+              </p>
+              <p style="font-size:0.85rem;color:#6b7280;margin:0;
+                        max-width:300px;line-height:1.7;">
+                아래 빠른 질문을 클릭하거나 직접 입력하여 네트워크 보안 분석을 시작하세요.
+              </p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            for msg in st.session_state["chat_history"]:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
 
-    # ── 빠른 질문 버튼 (채팅 입력 바로 위) ─────────────────────────
+    # ── 빠른 질문 버튼 (출력창 아래, 입력창 바로 위) ────────────────
     quick_questions = [
         "업로드된 pcap의 트래픽을 전체 요약해줘",
         "보안 위협 및 공격 패턴을 탐지해줘",
@@ -1225,7 +1236,7 @@ with tab_chat:
     quick_triggered = None
     st.markdown(
         '<p style="font-size:11px;font-weight:600;color:#9ca3af;'
-        'letter-spacing:0.06em;text-transform:uppercase;margin:12px 0 6px;">빠른 질문</p>',
+        'letter-spacing:0.06em;text-transform:uppercase;margin:10px 0 6px;">빠른 질문</p>',
         unsafe_allow_html=True
     )
     qc1, qc2 = st.columns(2)
@@ -1240,6 +1251,12 @@ with tab_chat:
         if st.button(quick_questions[3], use_container_width=True, key="q3"):
             quick_triggered = quick_questions[3]
 
+    # ── 입력창 (Streamlit sticky bottom) ────────────────────────────
+    user_input = st.chat_input(
+        "네트워크 보안 분석을 요청하세요...",
+        disabled=not st.session_state["api_configured"],
+    )
+
     # ── 질문 처리 & 스트리밍 응답 ───────────────────────────────────
     final_input = quick_triggered or user_input
 
@@ -1253,13 +1270,12 @@ with tab_chat:
         api_messages = [{"role": "system", "content": system_prompt}]
         api_messages.extend(st.session_state["chat_history"][-10:])
 
-        # 사용자 메시지 즉시 렌더링
-        with st.chat_message("user"):
-            st.markdown(final_input)
-
-        # 스트리밍 응답
-        with st.chat_message("assistant"):
-            full_response = st.write_stream(stream_llm(api_messages))
+        # 출력창 안에서 스트리밍 렌더링
+        with msg_area:
+            with st.chat_message("user"):
+                st.markdown(final_input)
+            with st.chat_message("assistant"):
+                full_response = st.write_stream(stream_llm(api_messages))
 
         st.session_state["chat_history"].append(
             {"role": "assistant", "content": full_response}
