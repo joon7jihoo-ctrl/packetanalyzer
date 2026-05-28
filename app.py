@@ -1052,6 +1052,11 @@ with tab_dash:
              style="color:#2563eb;text-decoration:underline;">
             Wireshark Sample Captures
           </a>
+          &nbsp;·&nbsp;
+          <a href="https://www.malware-traffic-analysis.net" target="_blank"
+             style="color:#2563eb;text-decoration:underline;">
+            Malware-Traffic-Analysis.net
+          </a>
         </p>
         """, unsafe_allow_html=True)
     else:
