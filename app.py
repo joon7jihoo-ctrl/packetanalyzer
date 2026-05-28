@@ -236,6 +236,20 @@ button[data-testid="baseButton-headerNoPadding"] {
 }
 [data-testid="stChatMessage"]:last-child { border-bottom: none !important; }
 
+/* ── 채팅 아바타 Material Icon 텍스트 숨김 ─────────────────────
+   Material Symbols Rounded 폰트가 로드되지 않으면 face / smart_toy
+   가 원시 문자열로 노출됨 → font-size:0 으로 완전 은닉              */
+[data-testid="stChatMessage"] [data-testid="stChatMessageAvatarUser"] span,
+[data-testid="stChatMessage"] [data-testid="stChatMessageAvatarAssistant"] span,
+[data-testid="stChatMessage"] > div:first-child span,
+[data-testid="stChatMessage"] > div:first-child svg + span,
+.stChatMessageAvatar span,
+span.material-symbols-rounded {
+    font-size: 0 !important;
+    line-height: 0 !important;
+    visibility: hidden !important;
+}
+
 /* 메시지 공통 텍스트 */
 [data-testid="stChatMessage"] p,
 [data-testid="stChatMessage"] li,
